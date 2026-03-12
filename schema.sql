@@ -69,6 +69,13 @@ CREATE TABLE work_authors (
     PRIMARY KEY (work_id, position)
 );
 
+CREATE TABLE cover_metadata (
+    id BIGINT PRIMARY KEY,
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    created_at DATE
+);
+
 CREATE TABLE work_covers (
     work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
     cover_id BIGINT NOT NULL,

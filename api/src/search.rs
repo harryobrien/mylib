@@ -99,6 +99,7 @@ pub struct WorksFields {
     pub subjects: Field,
     pub author_names: Field,
     pub first_publish_year: Field,
+    pub cover_id: Field,
 }
 
 impl WorksIndex {
@@ -113,9 +114,10 @@ impl WorksIndex {
         let subjects = builder.add_text_field("subjects", TEXT | STORED);
         let author_names = builder.add_text_field("author_names", TEXT | STORED);
         let first_publish_year = builder.add_i64_field("first_publish_year", INDEXED | STORED);
+        let cover_id = builder.add_i64_field("cover_id", STORED);
 
         let fields = WorksFields {
-            id, key, title, subtitle, description, subjects, author_names, first_publish_year,
+            id, key, title, subtitle, description, subjects, author_names, first_publish_year, cover_id,
         };
         (builder.build(), fields)
     }
@@ -166,6 +168,7 @@ impl WorksIndex {
                 subtitle: doc.get_first(self.fields.subtitle).and_then(|v| v.as_str()).map(String::from),
                 author_names: doc.get_first(self.fields.author_names).and_then(|v| v.as_str()).map(String::from),
                 first_publish_year: doc.get_first(self.fields.first_publish_year).and_then(|v| v.as_i64()),
+                cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
                 score,
             });
         }
@@ -182,6 +185,7 @@ pub struct WorkHit {
     pub subtitle: Option<String>,
     pub author_names: Option<String>,
     pub first_publish_year: Option<i64>,
+    pub cover_id: Option<i64>,
     pub score: f32,
 }
 
@@ -293,6 +297,7 @@ pub struct EditionsFields {
     pub isbns: Field,
     pub publishers: Field,
     pub publish_year: Field,
+    pub cover_id: Field,
 }
 
 impl EditionsIndex {
@@ -308,9 +313,10 @@ impl EditionsIndex {
         let isbns = builder.add_text_field("isbns", TEXT | STORED);
         let publishers = builder.add_text_field("publishers", TEXT | STORED);
         let publish_year = builder.add_i64_field("publish_year", INDEXED | STORED);
+        let cover_id = builder.add_i64_field("cover_id", STORED);
 
         let fields = EditionsFields {
-            id, key, work_id, work_key, title, subtitle, isbns, publishers, publish_year,
+            id, key, work_id, work_key, title, subtitle, isbns, publishers, publish_year, cover_id,
         };
         (builder.build(), fields)
     }
@@ -361,6 +367,7 @@ impl EditionsIndex {
                 isbns: doc.get_first(self.fields.isbns).and_then(|v| v.as_str()).map(String::from),
                 publishers: doc.get_first(self.fields.publishers).and_then(|v| v.as_str()).map(String::from),
                 publish_year: doc.get_first(self.fields.publish_year).and_then(|v| v.as_i64()),
+                cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
                 score,
             });
         }
@@ -379,5 +386,6 @@ pub struct EditionHit {
     pub isbns: Option<String>,
     pub publishers: Option<String>,
     pub publish_year: Option<i64>,
+    pub cover_id: Option<i64>,
     pub score: f32,
 }

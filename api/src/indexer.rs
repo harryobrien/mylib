@@ -47,6 +47,9 @@ async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> 
             if let Some(y) = year {
                 doc.add_i64(search.works.fields.first_publish_year, y);
             }
+            if let Some(c) = w.cover_id {
+                doc.add_i64(search.works.fields.cover_id, c);
+            }
             writer.add_document(doc)?;
         }
         offset += BATCH_SIZE;
@@ -115,6 +118,9 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<(
             }
             if let Some(y) = year {
                 doc.add_i64(search.editions.fields.publish_year, y);
+            }
+            if let Some(c) = e.cover_id {
+                doc.add_i64(search.editions.fields.cover_id, c);
             }
             writer.add_document(doc)?;
         }

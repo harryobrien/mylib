@@ -32,6 +32,7 @@ pub struct Edition {
     pub publishers: Option<String>,
     pub physical_format: Option<String>,
     pub number_of_pages: Option<i32>,
+    pub cover_id: Option<i64>,
 }
 
 pub async fn get_work_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Work>> {
@@ -75,7 +76,11 @@ pub async fn get_edition_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Ed
         r#"
         SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
                string_agg(DISTINCT ep.publisher, ', ') as publishers,
-               e.physical_format, e.number_of_pages
+               e.physical_format, e.number_of_pages,
+               (SELECT ec.cover_id FROM edition_covers ec
+                JOIN cover_metadata cm ON ec.cover_id = cm.id
+                WHERE ec.edition_id = e.id
+                ORDER BY ec.position LIMIT 1) as cover_id
         FROM editions e
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.id = $1
@@ -92,7 +97,11 @@ pub async fn get_edition_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option
         r#"
         SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
                string_agg(DISTINCT ep.publisher, ', ') as publishers,
-               e.physical_format, e.number_of_pages
+               e.physical_format, e.number_of_pages,
+               (SELECT ec.cover_id FROM edition_covers ec
+                JOIN cover_metadata cm ON ec.cover_id = cm.id
+                WHERE ec.edition_id = e.id
+                ORDER BY ec.position LIMIT 1) as cover_id
         FROM editions e
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.key = $1
@@ -139,7 +148,11 @@ pub async fn get_work_editions(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<
         r#"
         SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
                string_agg(DISTINCT ep.publisher, ', ') as publishers,
-               e.physical_format, e.number_of_pages
+               e.physical_format, e.number_of_pages,
+               (SELECT ec.cover_id FROM edition_covers ec
+                JOIN cover_metadata cm ON ec.cover_id = cm.id
+                WHERE ec.edition_id = e.id
+                ORDER BY ec.position LIMIT 1) as cover_id
         FROM editions e
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.work_id = $1
@@ -160,6 +173,28 @@ pub async fn get_edition_isbns(pool: &PgPool, edition_id: i32) -> sqlx::Result<V
     Ok(rows.into_iter().map(|(isbn,)| isbn).collect())
 }
 
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct CoverMetadata {
+    pub id: i64,
+    pub width: i32,
+    pub height: i32,
+}
+
+pub async fn get_edition_covers(pool: &PgPool, edition_id: i32) -> sqlx::Result<Vec<CoverMetadata>> {
+    sqlx::query_as(
+        r#"
+        SELECT cm.id, cm.width, cm.height
+        FROM edition_covers ec
+        JOIN cover_metadata cm ON ec.cover_id = cm.id
+        WHERE ec.edition_id = $1
+        ORDER BY ec.position
+        "#
+    )
+    .bind(edition_id)
+    .fetch_all(pool)
+    .await
+}
+
 #[derive(Debug, sqlx::FromRow)]
 pub struct WorkForIndex {
     pub id: i32,
@@ -170,6 +205,7 @@ pub struct WorkForIndex {
     pub first_publish_date: Option<String>,
     pub subjects: Option<String>,
     pub author_names: Option<String>,
+    pub cover_id: Option<i64>,
 }
 
 pub async fn get_works_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<WorkForIndex>> {
@@ -177,7 +213,12 @@ pub async fn get_works_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> s
         r#"
         SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
                string_agg(DISTINCT ws.subject, ' | ') as subjects,
-               string_agg(DISTINCT a.name, ' | ') as author_names
+               string_agg(DISTINCT a.name, ' | ') as author_names,
+               (SELECT ec.cover_id FROM edition_covers ec
+                JOIN editions e ON ec.edition_id = e.id
+                JOIN cover_metadata cm ON ec.cover_id = cm.id
+                WHERE e.work_id = w.id
+                ORDER BY ec.position LIMIT 1) as cover_id
         FROM works w
         LEFT JOIN work_subjects ws ON w.id = ws.work_id
         LEFT JOIN work_authors wa ON w.id = wa.work_id
@@ -232,6 +273,7 @@ pub struct EditionForIndex {
     pub isbns: Option<String>,
     pub publishers: Option<String>,
     pub publish_date: Option<String>,
+    pub cover_id: Option<i64>,
 }
 
 pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
@@ -240,7 +282,11 @@ pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -
         SELECT e.id, e.key, e.work_id, w.key as work_key, e.title, e.subtitle,
                string_agg(DISTINCT ei.isbn, ' ') as isbns,
                string_agg(DISTINCT ep.publisher, ' | ') as publishers,
-               e.publish_date
+               e.publish_date,
+               (SELECT ec.cover_id FROM edition_covers ec
+                JOIN cover_metadata cm ON ec.cover_id = cm.id
+                WHERE ec.edition_id = e.id
+                ORDER BY ec.position LIMIT 1) as cover_id
         FROM editions e
         JOIN works w ON e.work_id = w.id
         LEFT JOIN edition_isbns ei ON e.id = ei.edition_id

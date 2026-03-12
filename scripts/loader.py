@@ -6,6 +6,7 @@ Imports Open Library data dumps into PostgreSQL using COPY for bulk loading.
 
 Usage:
     python loader.py --authors FILE --works FILE --editions FILE
+    python loader.py --cover-metadata FILE
     python loader.py --rebuild-indexes
 """
 
@@ -627,6 +628,59 @@ def load_editions(conn, filepath):
     load_entity(conn, filepath, "editions", "/type/edition", parse_edition, flush_editions, preload_editions)
 
 
+# --- Cover Metadata Loading ---
+
+def load_cover_metadata(conn: psycopg.Connection, filepath: Path):
+    """Load cover metadata from tab-separated dump file (cover_id, width, height, date)."""
+    print(f"Loading cover metadata from {filepath}...")
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM cover_metadata")
+        existing = cur.fetchone()[0]
+    if existing > 0:
+        print(f"  Table already has {existing:,} rows, skipping")
+        return
+
+    opener = gzip.open if filepath.suffix == ".gz" else open
+    batch = []
+    count = 0
+
+    with opener(filepath, "rt", encoding="utf-8") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != 4:
+                continue
+            try:
+                cover_id = int(parts[0])
+                width = int(parts[1])
+                height = int(parts[2])
+                created_at = parts[3] if parts[3] else None
+                batch.append((cover_id, width, height, created_at))
+                count += 1
+
+                if count % 100000 == 0:
+                    print(f"  {count:,} loaded...", end="\r")
+
+                if len(batch) >= BATCH_SIZE:
+                    with conn.cursor() as cur:
+                        with cur.copy("COPY cover_metadata (id, width, height, created_at) FROM STDIN") as copy:
+                            for row in batch:
+                                copy.write_row(row)
+                    conn.commit()
+                    batch = []
+            except ValueError:
+                continue
+
+    if batch:
+        with conn.cursor() as cur:
+            with cur.copy("COPY cover_metadata (id, width, height, created_at) FROM STDIN") as copy:
+                for row in batch:
+                    copy.write_row(row)
+        conn.commit()
+
+    print(f"  Loaded {count:,} cover metadata records")
+
+
 # --- Index Management ---
 
 INDEXES = [
@@ -698,6 +752,7 @@ def main():
     parser.add_argument("--authors", type=Path, help="Path to authors dump file")
     parser.add_argument("--works", type=Path, help="Path to works dump file")
     parser.add_argument("--editions", type=Path, help="Path to editions dump file")
+    parser.add_argument("--cover-metadata", type=Path, help="Path to covers metadata dump file")
     parser.add_argument("--skip-indexes", action="store_true", help="Don't drop/rebuild indexes")
     parser.add_argument("--rebuild-indexes", action="store_true", help="Only rebuild indexes")
     args = parser.parse_args()
@@ -711,7 +766,7 @@ def main():
         print("Done!")
         return
 
-    if not any([args.authors, args.works, args.editions]):
+    if not any([args.authors, args.works, args.editions, args.cover_metadata]):
         parser.print_help()
         sys.exit(1)
 
@@ -727,6 +782,8 @@ def main():
             load_works(conn, args.works)
         if args.editions:
             load_editions(conn, args.editions)
+        if args.cover_metadata:
+            load_cover_metadata(conn, args.cover_metadata)
 
         if not args.skip_indexes:
             rebuild_indexes(conn)

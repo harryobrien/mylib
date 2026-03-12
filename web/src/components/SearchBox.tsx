@@ -13,6 +13,7 @@ interface WorkHit {
   subtitle?: string;
   author_names?: string;
   first_publish_year?: number;
+  cover_id?: number;
   score: number;
 }
 
@@ -35,6 +36,7 @@ interface EditionHit {
   isbns?: string;
   publishers?: string;
   publish_year?: number;
+  cover_id?: number;
   score: number;
 }
 
@@ -61,6 +63,7 @@ interface TaggedResult {
   publishers?: string;
   publish_year?: number;
   isbns?: string;
+  cover_id?: number;
 }
 
 interface SavedState {
@@ -223,6 +226,21 @@ export default function SearchBox() {
             onClick={() => saveToHistory(query)}
           >
             <span className={`tag tag-${r._type}`}>{r._type}</span>
+            {r._type !== 'author' && (
+              <div className="result-cover">
+                {r.cover_id ? (
+                  <img
+                    src={`https://covers.openlibrary.org/b/id/${r.cover_id}-S.jpg`}
+                    alt=""
+                    width={33}
+                    height={50}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="cover-placeholder" />
+                )}
+              </div>
+            )}
             <div className="result-content">
               <div className="result-title">{esc(r.title || r.name)}</div>
               {r.subtitle && <div className="result-subtitle">{esc(r.subtitle)}</div>}
@@ -298,6 +316,22 @@ export default function SearchBox() {
         .tag-work { background: #e8e4d9; color: #5a5549; }
         .tag-author { background: #d9e8d9; color: #3a5a3a; }
         .tag-edition { background: #d9e0e8; color: #3a4a5a; }
+        .result-cover {
+          width: 33px;
+          height: 50px;
+          flex-shrink: 0;
+        }
+        .result-cover img {
+          width: 33px;
+          height: 50px;
+          object-fit: cover;
+          background: #e8e4d9;
+        }
+        .cover-placeholder {
+          width: 33px;
+          height: 50px;
+          background: #e8e4d9;
+        }
         .result-content { flex: 1; min-width: 0; }
         .result-title {
           font-size: 15px;

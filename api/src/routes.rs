@@ -217,6 +217,7 @@ pub struct EditionResponse {
     #[serde(flatten)]
     edition: db::Edition,
     isbns: Vec<String>,
+    covers: Vec<db::CoverMetadata>,
 }
 
 async fn get_edition(
@@ -229,9 +230,12 @@ async fn get_edition(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let isbns = db::get_edition_isbns(&state.db, edition.id).await?;
+    let (isbns, covers) = tokio::join!(
+        db::get_edition_isbns(&state.db, edition.id),
+        db::get_edition_covers(&state.db, edition.id)
+    );
 
-    Ok(Json(EditionResponse { edition, isbns }))
+    Ok(Json(EditionResponse { edition, isbns: isbns?, covers: covers? }))
 }
 
 #[derive(Serialize)]

@@ -22,10 +22,14 @@ async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> 
     tracing::info!("Indexing works...");
     let mut writer = search.works.writer()?;
     let total = db::count_works(pool).await?;
-    let mut offset = 0i64;
+    let mut last_id = 0i32;
+    let mut indexed = 0i64;
 
-    while offset < total {
-        let works = db::get_works_for_indexing(pool, offset, BATCH_SIZE).await?;
+    loop {
+        let works = db::get_works_for_indexing(pool, last_id, BATCH_SIZE).await?;
+        if works.is_empty() {
+            break;
+        }
         for w in &works {
             let year = extract_year(&w.first_publish_date);
             let mut doc = tantivy::TantivyDocument::new();
@@ -51,9 +55,10 @@ async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> 
                 doc.add_i64(search.works.fields.cover_id, c);
             }
             writer.add_document(doc)?;
+            last_id = w.id;
         }
-        offset += BATCH_SIZE;
-        tracing::info!("  Works: {offset}/{total}");
+        indexed += works.len() as i64;
+        tracing::info!("  Works: {indexed}/{total}");
     }
     writer.commit()?;
     Ok(())
@@ -65,10 +70,14 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()
     tracing::info!("Indexing authors...");
     let mut writer = search.authors.writer()?;
     let total = db::count_authors(pool).await?;
-    let mut offset = 0i64;
+    let mut last_id = 0i32;
+    let mut indexed = 0i64;
 
-    while offset < total {
-        let authors = db::get_authors_for_indexing(pool, offset, BATCH_SIZE).await?;
+    loop {
+        let authors = db::get_authors_for_indexing(pool, last_id, BATCH_SIZE).await?;
+        if authors.is_empty() {
+            break;
+        }
         for a in &authors {
             let mut doc = tantivy::TantivyDocument::new();
             doc.add_i64(search.authors.fields.id, a.id as i64);
@@ -81,9 +90,10 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()
                 doc.add_text(search.authors.fields.bio, bio);
             }
             writer.add_document(doc)?;
+            last_id = a.id;
         }
-        offset += BATCH_SIZE;
-        tracing::info!("  Authors: {offset}/{total}");
+        indexed += authors.len() as i64;
+        tracing::info!("  Authors: {indexed}/{total}");
     }
     writer.commit()?;
     Ok(())
@@ -95,10 +105,14 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<(
     tracing::info!("Indexing editions...");
     let mut writer = search.editions.writer()?;
     let total = db::count_editions(pool).await?;
-    let mut offset = 0i64;
+    let mut last_id = 0i32;
+    let mut indexed = 0i64;
 
-    while offset < total {
-        let editions = db::get_editions_for_indexing(pool, offset, BATCH_SIZE).await?;
+    loop {
+        let editions = db::get_editions_for_indexing(pool, last_id, BATCH_SIZE).await?;
+        if editions.is_empty() {
+            break;
+        }
         for e in &editions {
             let year = extract_year(&e.publish_date);
             let mut doc = tantivy::TantivyDocument::new();
@@ -123,9 +137,10 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<(
                 doc.add_i64(search.editions.fields.cover_id, c);
             }
             writer.add_document(doc)?;
+            last_id = e.id;
         }
-        offset += BATCH_SIZE;
-        tracing::info!("  Editions: {offset}/{total}");
+        indexed += editions.len() as i64;
+        tracing::info!("  Editions: {indexed}/{total}");
     }
     writer.commit()?;
     Ok(())

@@ -1,3 +1,4 @@
+mod auth;
 mod base36;
 mod db;
 mod indexer;
@@ -7,6 +8,7 @@ mod search;
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use axum::http::{header, Method};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -56,10 +58,23 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState { db, search });
 
+    let cors_origins = std::env::var("CORS_ORIGINS")
+        .unwrap_or_else(|_| "http://localhost:4321".into())
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect::<Vec<_>>();
+
+    let cors = CorsLayer::new()
+        .allow_origin(cors_origins)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::COOKIE])
+        .allow_credentials(true);
+
     let app = Router::new()
         .merge(routes::router())
+        .merge(auth::router())
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .with_state(state);
 
     let addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into());

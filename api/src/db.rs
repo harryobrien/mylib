@@ -208,7 +208,7 @@ pub struct WorkForIndex {
     pub cover_id: Option<i64>,
 }
 
-pub async fn get_works_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<WorkForIndex>> {
+pub async fn get_works_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<WorkForIndex>> {
     sqlx::query_as(
         r#"
         SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
@@ -223,12 +223,13 @@ pub async fn get_works_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> s
         LEFT JOIN work_subjects ws ON w.id = ws.work_id
         LEFT JOIN work_authors wa ON w.id = wa.work_id
         LEFT JOIN authors a ON wa.author_id = a.id
+        WHERE w.id > $1
         GROUP BY w.id
         ORDER BY w.id
-        OFFSET $1 LIMIT $2
+        LIMIT $2
         "#
     )
-    .bind(offset)
+    .bind(after_id)
     .bind(limit)
     .fetch_all(pool)
     .await
@@ -243,7 +244,7 @@ pub struct AuthorForIndex {
     pub bio: Option<String>,
 }
 
-pub async fn get_authors_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<AuthorForIndex>> {
+pub async fn get_authors_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<AuthorForIndex>> {
     sqlx::query_as(
         r#"
         SELECT a.id, a.key, a.name,
@@ -251,12 +252,13 @@ pub async fn get_authors_for_indexing(pool: &PgPool, offset: i64, limit: i64) ->
                a.bio
         FROM authors a
         LEFT JOIN author_alternate_names aan ON a.id = aan.author_id
+        WHERE a.id > $1
         GROUP BY a.id
         ORDER BY a.id
-        OFFSET $1 LIMIT $2
+        LIMIT $2
         "#
     )
-    .bind(offset)
+    .bind(after_id)
     .bind(limit)
     .fetch_all(pool)
     .await
@@ -276,7 +278,7 @@ pub struct EditionForIndex {
     pub cover_id: Option<i64>,
 }
 
-pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
+pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
     sqlx::query_as(
         r#"
         SELECT e.id, e.key, e.work_id, w.key as work_key, e.title, e.subtitle,
@@ -291,12 +293,13 @@ pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -
         JOIN works w ON e.work_id = w.id
         LEFT JOIN edition_isbns ei ON e.id = ei.edition_id
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        WHERE e.id > $1
         GROUP BY e.id, w.key
         ORDER BY e.id
-        OFFSET $1 LIMIT $2
+        LIMIT $2
         "#
     )
-    .bind(offset)
+    .bind(after_id)
     .bind(limit)
     .fetch_all(pool)
     .await

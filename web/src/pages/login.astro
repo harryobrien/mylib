@@ -1,0 +1,111 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
+---
+
+<Layout title="Login - mylib">
+  <div class="auth-container">
+    <h2>Login</h2>
+    <form id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required />
+      </div>
+      <div id="error" class="error"></div>
+      <button type="submit">Login</button>
+    </form>
+    <p class="switch">
+      Don't have an account? <a href="/register">Register</a>
+    </p>
+  </div>
+</Layout>
+
+<style>
+  .auth-container {
+    max-width: 360px;
+    margin: 40px auto;
+  }
+  h2 {
+    margin-bottom: 20px;
+  }
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  label {
+    font-size: 14px;
+    color: #5a5549;
+  }
+  input {
+    padding: 10px 12px;
+    font-size: 16px;
+    border: 1px solid #d9d4c8;
+    background: #faf6ed;
+    font-family: inherit;
+  }
+  input:focus {
+    outline: none;
+    border-color: #5a5549;
+  }
+  button {
+    padding: 12px;
+    font-size: 16px;
+    background: #5a5549;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover {
+    background: #4a4539;
+  }
+  .error {
+    color: #a65d57;
+    font-size: 14px;
+  }
+  .switch {
+    margin-top: 20px;
+    font-size: 14px;
+    color: #5a5549;
+  }
+</style>
+
+<script define:vars={{ API_BASE }}>
+  document.getElementById('login-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const email = form.elements.namedItem('email').value;
+    const password = form.elements.namedItem('password').value;
+    const errorEl = document.getElementById('error');
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        window.location.href = '/';
+      } else {
+        if (errorEl) errorEl.textContent = data.message || 'Login failed';
+      }
+    } catch {
+      if (errorEl) errorEl.textContent = 'Network error';
+    }
+  });
+</script>

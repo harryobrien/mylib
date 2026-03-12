@@ -1,6 +1,7 @@
 ---
 import { ViewTransitions } from 'astro:transitions';
 import SearchPortal from '../components/SearchPortal.tsx';
+import AccountButton from '../components/AccountButton.tsx';
 
 interface Props {
   title: string;
@@ -49,9 +50,15 @@ const { title, showPortal = false } = Astro.props;
     }
     header {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 15px;
       margin-bottom: 20px;
+    }
+    .header-right {
+      margin-left: auto;
+      align-self: stretch;
+      display: flex;
+      align-items: stretch;
     }
     header h1 {
       font-weight: 500;
@@ -116,6 +123,9 @@ const { title, showPortal = false } = Astro.props;
     <header>
       <h1><a href="/" id="logo"><em>my</em><u>lib</u></a></h1>
       {showPortal && <SearchPortal client:only="react" />}
+      <div class="header-right">
+        <AccountButton client:only="react" />
+      </div>
     </header>
     <div class="content">
       <slot />

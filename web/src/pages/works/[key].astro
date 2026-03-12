@@ -1,0 +1,132 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const API_BASE = 'http://localhost:3000';
+const { key } = Astro.params;
+
+const workRes = await fetch(`${API_BASE}/works/${key}`);
+if (!workRes.ok) {
+  return Astro.redirect('/404');
+}
+const work = await workRes.json();
+
+let editions = [];
+try {
+  const editionsRes = await fetch(`${API_BASE}/works/${key}/editions`);
+  if (editionsRes.ok) {
+    editions = await editionsRes.json();
+  }
+} catch (e) {}
+
+let authors = [];
+try {
+  const authorsRes = await fetch(`${API_BASE}/works/${key}/authors`);
+  if (authorsRes.ok) {
+    authors = await authorsRes.json();
+  }
+} catch (e) {}
+
+// Cache for 1 hour, stale-while-revalidate for 1 day
+Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/[\uFE20\uFE21]/g, '');
+}
+---
+
+<Layout title={work.title} showPortal>
+  <h2 class="page-title">{esc(work.title)}</h2>
+  {work.subtitle && <p class="subtitle">{esc(work.subtitle)}</p>}
+
+  {authors.length > 0 && (
+    <div class="authors">
+      by {authors.map((a, i) => (
+        <span>
+          <a href={a.key}>{esc(a.name)}</a>{i < authors.length - 1 && ', '}
+        </span>
+      ))}
+    </div>
+  )}
+
+  {work.first_publish_date && (
+    <p class="meta">First published: {work.first_publish_date}</p>
+  )}
+
+  {work.description && (
+    <section class="description">
+      <h2>Description</h2>
+      <p>{esc(work.description)}</p>
+    </section>
+  )}
+
+  <section class="editions">
+    <h2>Editions ({editions.length})</h2>
+    {editions.length === 0 ? (
+      <p class="empty">No editions found</p>
+    ) : (
+      <div class="editions-list">
+        {editions.map(e => (
+          <div class="edition">
+            <div class="edition-title">{esc(e.title)}</div>
+            <div class="edition-meta">
+              {e.publishers && <span>{esc(e.publishers)}</span>}
+              {e.publish_date && <span> · {e.publish_date}</span>}
+              {e.physical_format && <span> · {e.physical_format}</span>}
+              {e.number_of_pages && <span> · {e.number_of_pages} pages</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+</Layout>
+
+<style>
+  .page-title {
+    font-size: 1.5em;
+    margin: 0 0 10px;
+  }
+  .subtitle {
+    font-size: 1.1em;
+    font-style: italic;
+    color: #5a5549;
+    margin: 0 0 15px;
+  }
+  .authors {
+    font-size: 1.1em;
+    margin-bottom: 15px;
+  }
+  .meta {
+    font-size: 14px;
+    color: #8a8477;
+    margin-bottom: 20px;
+  }
+  .description {
+    margin-bottom: 30px;
+    line-height: 1.6;
+  }
+  .editions-list {
+    border: 1px solid #000;
+  }
+  .edition {
+    padding: 12px 15px;
+    border-bottom: 1px solid #d9d4c8;
+    background: #faf6ed;
+  }
+  .edition:last-child { border-bottom: none; }
+  .edition:hover { background: #f0ebdf; }
+  .edition-title {
+    font-weight: 500;
+    margin-bottom: 3px;
+  }
+  .edition-meta {
+    font-size: 13px;
+    color: #8a8477;
+  }
+  .empty {
+    color: #8a8477;
+    padding: 20px;
+    text-align: center;
+  }
+</style>

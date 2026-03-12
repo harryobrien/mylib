@@ -1,0 +1,9 @@
+*/.venv/
+*/node_modules/
+
+*/.env
+index/
+
+# Added by cargo
+
+/target

@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import SearchBox from '../components/SearchBox.jsx';
+---
+
+<Layout title="mylib" showPortal>
+  <SearchBox client:only="react" />
+</Layout>

@@ -1,0 +1,277 @@
+use sqlx::PgPool;
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct Work {
+    pub id: i32,
+    pub key: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub first_publish_date: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct Author {
+    pub id: i32,
+    pub key: String,
+    pub name: String,
+    pub fuller_name: Option<String>,
+    pub bio: Option<String>,
+    pub birth_date: Option<String>,
+    pub death_date: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct Edition {
+    pub id: i32,
+    pub key: String,
+    pub work_id: i32,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub publish_date: Option<String>,
+    pub publishers: Option<String>,
+    pub physical_format: Option<String>,
+    pub number_of_pages: Option<i32>,
+}
+
+pub async fn get_work_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Work>> {
+    sqlx::query_as(
+        "SELECT id, key, title, subtitle, first_publish_date, description FROM works WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_work_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Work>> {
+    sqlx::query_as(
+        "SELECT id, key, title, subtitle, first_publish_date, description FROM works WHERE key = $1"
+    )
+    .bind(key)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_author_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Author>> {
+    sqlx::query_as(
+        "SELECT id, key, name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = $1"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_author_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Author>> {
+    sqlx::query_as(
+        "SELECT id, key, name, fuller_name, bio, birth_date, death_date FROM authors WHERE key = $1"
+    )
+    .bind(key)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_edition_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Edition>> {
+    sqlx::query_as(
+        r#"
+        SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
+               string_agg(DISTINCT ep.publisher, ', ') as publishers,
+               e.physical_format, e.number_of_pages
+        FROM editions e
+        LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        WHERE e.id = $1
+        GROUP BY e.id
+        "#
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_edition_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Edition>> {
+    sqlx::query_as(
+        r#"
+        SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
+               string_agg(DISTINCT ep.publisher, ', ') as publishers,
+               e.physical_format, e.number_of_pages
+        FROM editions e
+        LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        WHERE e.key = $1
+        GROUP BY e.id
+        "#
+    )
+    .bind(key)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_author_works(pool: &PgPool, author_id: i32) -> sqlx::Result<Vec<Work>> {
+    sqlx::query_as(
+        r#"
+        SELECT w.id, w.key, w.title, w.subtitle, w.first_publish_date, w.description
+        FROM works w
+        JOIN work_authors wa ON w.id = wa.work_id
+        WHERE wa.author_id = $1
+        ORDER BY w.first_publish_date DESC NULLS LAST
+        "#
+    )
+    .bind(author_id)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_work_authors(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<Author>> {
+    sqlx::query_as(
+        r#"
+        SELECT a.id, a.key, a.name, a.fuller_name, a.bio, a.birth_date, a.death_date
+        FROM authors a
+        JOIN work_authors wa ON a.id = wa.author_id
+        WHERE wa.work_id = $1
+        ORDER BY wa.position
+        "#
+    )
+    .bind(work_id)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_work_editions(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<Edition>> {
+    sqlx::query_as(
+        r#"
+        SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
+               string_agg(DISTINCT ep.publisher, ', ') as publishers,
+               e.physical_format, e.number_of_pages
+        FROM editions e
+        LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        WHERE e.work_id = $1
+        GROUP BY e.id
+        ORDER BY e.publish_date DESC NULLS LAST
+        "#
+    )
+    .bind(work_id)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_edition_isbns(pool: &PgPool, edition_id: i32) -> sqlx::Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT isbn FROM edition_isbns WHERE edition_id = $1")
+        .bind(edition_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|(isbn,)| isbn).collect())
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct WorkForIndex {
+    pub id: i32,
+    pub key: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub description: Option<String>,
+    pub first_publish_date: Option<String>,
+    pub subjects: Option<String>,
+    pub author_names: Option<String>,
+}
+
+pub async fn get_works_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<WorkForIndex>> {
+    sqlx::query_as(
+        r#"
+        SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
+               string_agg(DISTINCT ws.subject, ' | ') as subjects,
+               string_agg(DISTINCT a.name, ' | ') as author_names
+        FROM works w
+        LEFT JOIN work_subjects ws ON w.id = ws.work_id
+        LEFT JOIN work_authors wa ON w.id = wa.work_id
+        LEFT JOIN authors a ON wa.author_id = a.id
+        GROUP BY w.id
+        ORDER BY w.id
+        OFFSET $1 LIMIT $2
+        "#
+    )
+    .bind(offset)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct AuthorForIndex {
+    pub id: i32,
+    pub key: String,
+    pub name: String,
+    pub alternate_names: Option<String>,
+    pub bio: Option<String>,
+}
+
+pub async fn get_authors_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<AuthorForIndex>> {
+    sqlx::query_as(
+        r#"
+        SELECT a.id, a.key, a.name,
+               string_agg(DISTINCT aan.name, ' | ') as alternate_names,
+               a.bio
+        FROM authors a
+        LEFT JOIN author_alternate_names aan ON a.id = aan.author_id
+        GROUP BY a.id
+        ORDER BY a.id
+        OFFSET $1 LIMIT $2
+        "#
+    )
+    .bind(offset)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct EditionForIndex {
+    pub id: i32,
+    pub key: String,
+    pub work_key: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub isbns: Option<String>,
+    pub publishers: Option<String>,
+    pub publish_date: Option<String>,
+}
+
+pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
+    sqlx::query_as(
+        r#"
+        SELECT e.id, e.key, w.key as work_key, e.title, e.subtitle,
+               string_agg(DISTINCT ei.isbn, ' ') as isbns,
+               string_agg(DISTINCT ep.publisher, ' | ') as publishers,
+               e.publish_date
+        FROM editions e
+        JOIN works w ON e.work_id = w.id
+        LEFT JOIN edition_isbns ei ON e.id = ei.edition_id
+        LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        GROUP BY e.id, w.key
+        ORDER BY e.id
+        OFFSET $1 LIMIT $2
+        "#
+    )
+    .bind(offset)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn count_works(pool: &PgPool) -> sqlx::Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM works")
+        .fetch_one(pool)
+        .await?;
+    Ok(count)
+}
+
+pub async fn count_authors(pool: &PgPool) -> sqlx::Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM authors")
+        .fetch_one(pool)
+        .await?;
+    Ok(count)
+}
+
+pub async fn count_editions(pool: &PgPool) -> sqlx::Result<i64> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM editions")
+        .fetch_one(pool)
+        .await?;
+    Ok(count)
+}

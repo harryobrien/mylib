@@ -1,0 +1,138 @@
+---
+import { ViewTransitions } from 'astro:transitions';
+import SearchPortal from '../components/SearchPortal.jsx';
+
+interface Props {
+  title: string;
+  showPortal?: boolean;
+}
+
+const { title, showPortal = false } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <ViewTransitions fallback="none" />
+  <style is:inline>
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation-duration: 100ms;
+    }
+  </style>
+  <style is:global>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Alegreya Sans", system-ui, sans-serif;
+      background: #d4cfc4;
+      min-height: 100vh;
+      padding: 12px;
+    }
+    a { color: #1a1a1a; }
+    a:hover { color: #5a5549; }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #f5f0e6;
+      border: 1px solid #000;
+      padding: 20px;
+      min-height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
+    }
+    .content {
+      flex: 1;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    header h1 {
+      font-weight: 500;
+      margin: 0;
+    }
+    header h1 a {
+      text-decoration: none;
+      color: inherit;
+    }
+    header h1 em {
+      font-style: italic;
+      margin-right: 3px;
+    }
+    header h1 u {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    header h1 a:hover {
+      color: #5a5549;
+    }
+    .search-portal-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      flex: 1;
+      justify-content: flex-end;
+    }
+    .search-portal {
+      font-size: 13px;
+      color: #5a5549;
+      text-decoration: none;
+      padding: 3px 8px;
+      border: 1px solid #d9d4c8;
+      background: #faf6ed;
+    }
+    .search-portal:hover {
+      background: #f0ebdf;
+      border-color: #5a5549;
+    }
+    .search-portal.current {
+      border-color: #5a5549;
+      background: #f0ebdf;
+    }
+    .search-portal-clear {
+      font-size: 14px;
+      color: #a65d57;
+      background: #f5ebe9;
+      border: 1px solid #d4b5b1;
+      cursor: pointer;
+      padding: 3px 8px;
+      line-height: 1;
+    }
+    .search-portal-clear:hover {
+      color: #8b3a33;
+      background: #f0dcd8;
+      border-color: #a65d57;
+    }
+    h2 { font-weight: 500; font-size: 1.2em; margin: 20px 0 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><a href="/" id="logo"><em>my</em><u>lib</u></a></h1>
+      {showPortal && <SearchPortal client:only="react" />}
+    </header>
+    <div class="content">
+      <slot />
+    </div>
+  </div>
+  <script>
+    function setupLogo() {
+      document.getElementById('logo')?.addEventListener('click', (e) => {
+        if (window.location.pathname === '/') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('searchclear'));
+        }
+      });
+    }
+    setupLogo();
+    document.addEventListener('astro:page-load', setupLogo);
+  </script>
+</body>
+</html>

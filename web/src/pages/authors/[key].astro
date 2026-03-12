@@ -1,0 +1,121 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+const API_BASE = 'http://localhost:3000';
+const { key } = Astro.params;
+
+const authorRes = await fetch(`${API_BASE}/authors/${key}`);
+if (!authorRes.ok) {
+  return Astro.redirect('/404');
+}
+const author = await authorRes.json();
+
+let works = [];
+try {
+  const worksRes = await fetch(`${API_BASE}/authors/${key}/works`);
+  if (worksRes.ok) {
+    works = await worksRes.json();
+  }
+} catch (e) {}
+
+// Cache for 1 hour, stale-while-revalidate for 1 day
+Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/[\uFE20\uFE21]/g, '');
+}
+---
+
+<Layout title={author.name} showPortal>
+  <h2 class="page-title">{esc(author.name)}</h2>
+  {author.fuller_name && author.fuller_name !== author.name && (
+    <p class="fuller-name">{esc(author.fuller_name)}</p>
+  )}
+
+  <div class="meta">
+    {author.birth_date && <span>Born: {author.birth_date}</span>}
+    {author.birth_date && author.death_date && <span> · </span>}
+    {author.death_date && <span>Died: {author.death_date}</span>}
+  </div>
+
+  {author.bio && (
+    <section class="bio">
+      <h2>Biography</h2>
+      <p>{esc(author.bio)}</p>
+    </section>
+  )}
+
+  <section class="works">
+    <h2>Works ({works.length})</h2>
+    {works.length === 0 ? (
+      <p class="empty">No works found</p>
+    ) : (
+      <div class="works-list">
+        {works.map(w => (
+          <a href={w.key} class="work">
+            <div class="work-title">{esc(w.title)}</div>
+            {w.subtitle && <div class="work-subtitle">{esc(w.subtitle)}</div>}
+            {w.first_publish_date && (
+              <div class="work-meta">{w.first_publish_date}</div>
+            )}
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+</Layout>
+
+<style>
+  .page-title {
+    font-size: 1.5em;
+    margin: 0 0 10px;
+  }
+  .fuller-name {
+    font-size: 1.1em;
+    font-style: italic;
+    color: #5a5549;
+    margin: 0 0 15px;
+  }
+  .meta {
+    font-size: 14px;
+    color: #8a8477;
+    margin-bottom: 20px;
+  }
+  .bio {
+    margin-bottom: 30px;
+    line-height: 1.6;
+  }
+  .works-list {
+    border: 1px solid #000;
+  }
+  .work {
+    display: block;
+    padding: 12px 15px;
+    border-bottom: 1px solid #d9d4c8;
+    background: #faf6ed;
+    text-decoration: none;
+    color: inherit;
+  }
+  .work:last-child { border-bottom: none; }
+  .work:hover { background: #f0ebdf; }
+  .work-title {
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .work-subtitle {
+    font-size: 14px;
+    font-style: italic;
+    color: #5a5549;
+  }
+  .work-meta {
+    font-size: 13px;
+    color: #8a8477;
+    margin-top: 3px;
+  }
+  .empty {
+    color: #8a8477;
+    padding: 20px;
+    text-align: center;
+  }
+</style>

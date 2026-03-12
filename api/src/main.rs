@@ -1,10 +1,11 @@
 mod db;
+mod indexer;
 mod routes;
 mod search;
 
-use std::sync::Arc;
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -28,8 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://mylib:mylib@localhost:5432/mylib".into());
 
-    let index_path = std::env::var("INDEX_PATH")
-        .unwrap_or_else(|_| "./index".into());
+    let index_path = std::env::var("INDEX_PATH").unwrap_or_else(|_| "./index".into());
 
     tracing::info!("Connecting to database...");
     let db = PgPoolOptions::new()
@@ -39,6 +39,19 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Loading search index from {index_path}...");
     let search = search::SearchIndex::open_or_create(&index_path)?;
+
+    if search.is_empty() {
+        tracing::info!("Search index is empty, building...");
+        indexer::build_indexes(&db, &search).await?;
+        tracing::info!("Search index built successfully");
+    } else {
+        tracing::info!(
+            "Search index loaded: {} works, {} authors, {} editions",
+            search.works.doc_count(),
+            search.authors.doc_count(),
+            search.editions.doc_count()
+        );
+    }
 
     let state = Arc::new(AppState { db, search });
 

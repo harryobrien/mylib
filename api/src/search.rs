@@ -74,6 +74,10 @@ impl SearchIndex {
             editions: EditionsIndex::open_or_create(&base.join("editions"))?,
         })
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.works.doc_count() == 0 && self.authors.doc_count() == 0 && self.editions.doc_count() == 0
+    }
 }
 
 // --- Works Index ---
@@ -134,6 +138,10 @@ impl WorksIndex {
 
     pub fn writer(&self) -> anyhow::Result<IndexWriter> {
         Ok(self.index.writer(50_000_000)?)
+    }
+
+    pub fn doc_count(&self) -> u64 {
+        self.reader.searcher().num_docs()
     }
 
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<WorkHit>> {
@@ -225,6 +233,10 @@ impl AuthorsIndex {
         Ok(self.index.writer(50_000_000)?)
     }
 
+    pub fn doc_count(&self) -> u64 {
+        self.reader.searcher().num_docs()
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<AuthorHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![self.fields.name, self.fields.alternate_names];
@@ -313,6 +325,10 @@ impl EditionsIndex {
 
     pub fn writer(&self) -> anyhow::Result<IndexWriter> {
         Ok(self.index.writer(50_000_000)?)
+    }
+
+    pub fn doc_count(&self) -> u64 {
+        self.reader.searcher().num_docs()
     }
 
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<EditionHit>> {

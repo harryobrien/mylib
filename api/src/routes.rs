@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{db, search, AppState};
+use crate::{db, indexer, search, AppState};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -216,95 +216,13 @@ pub struct ReindexResponse {
 async fn reindex(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ReindexResponse>, AppError> {
-    const BATCH_SIZE: i64 = 10000;
+    indexer::build_indexes(&state.db, &state.search).await?;
 
-    tracing::info!("Indexing works...");
-    let mut writer = state.search.works.writer()?;
-    let total_works = db::count_works(&state.db).await?;
-    let mut offset = 0i64;
-
-    while offset < total_works {
-        let works = db::get_works_for_indexing(&state.db, offset, BATCH_SIZE).await?;
-        for w in &works {
-            let year = extract_year(&w.first_publish_date);
-            let mut doc = tantivy::TantivyDocument::new();
-            doc.add_i64(state.search.works.fields.id, w.id as i64);
-            doc.add_text(state.search.works.fields.key, &w.key);
-            doc.add_text(state.search.works.fields.title, &w.title);
-            if let Some(ref s) = w.subtitle { doc.add_text(state.search.works.fields.subtitle, s); }
-            if let Some(ref d) = w.description { doc.add_text(state.search.works.fields.description, d); }
-            if let Some(ref s) = w.subjects { doc.add_text(state.search.works.fields.subjects, s); }
-            if let Some(ref a) = w.author_names { doc.add_text(state.search.works.fields.author_names, a); }
-            if let Some(y) = year { doc.add_i64(state.search.works.fields.first_publish_year, y); }
-            writer.add_document(doc)?;
-        }
-        offset += BATCH_SIZE;
-        tracing::info!("  Works: {offset}/{total_works}");
-    }
-    writer.commit()?;
-
-    tracing::info!("Indexing authors...");
-    let mut writer = state.search.authors.writer()?;
-    let total_authors = db::count_authors(&state.db).await?;
-    offset = 0;
-
-    while offset < total_authors {
-        let authors = db::get_authors_for_indexing(&state.db, offset, BATCH_SIZE).await?;
-        for a in &authors {
-            let mut doc = tantivy::TantivyDocument::new();
-            doc.add_i64(state.search.authors.fields.id, a.id as i64);
-            doc.add_text(state.search.authors.fields.key, &a.key);
-            doc.add_text(state.search.authors.fields.name, &a.name);
-            if let Some(ref alt) = a.alternate_names { doc.add_text(state.search.authors.fields.alternate_names, alt); }
-            if let Some(ref bio) = a.bio { doc.add_text(state.search.authors.fields.bio, bio); }
-            writer.add_document(doc)?;
-        }
-        offset += BATCH_SIZE;
-        tracing::info!("  Authors: {offset}/{total_authors}");
-    }
-    writer.commit()?;
-
-    tracing::info!("Indexing editions...");
-    let mut writer = state.search.editions.writer()?;
-    let total_editions = db::count_editions(&state.db).await?;
-    offset = 0;
-
-    while offset < total_editions {
-        let editions = db::get_editions_for_indexing(&state.db, offset, BATCH_SIZE).await?;
-        for e in &editions {
-            let year = extract_year(&e.publish_date);
-            let mut doc = tantivy::TantivyDocument::new();
-            doc.add_i64(state.search.editions.fields.id, e.id as i64);
-            doc.add_text(state.search.editions.fields.key, &e.key);
-            doc.add_text(state.search.editions.fields.work_key, &e.work_key);
-            doc.add_text(state.search.editions.fields.title, &e.title);
-            if let Some(ref s) = e.subtitle { doc.add_text(state.search.editions.fields.subtitle, s); }
-            if let Some(ref i) = e.isbns { doc.add_text(state.search.editions.fields.isbns, i); }
-            if let Some(ref p) = e.publishers { doc.add_text(state.search.editions.fields.publishers, p); }
-            if let Some(y) = year { doc.add_i64(state.search.editions.fields.publish_year, y); }
-            writer.add_document(doc)?;
-        }
-        offset += BATCH_SIZE;
-        tracing::info!("  Editions: {offset}/{total_editions}");
-    }
-    writer.commit()?;
-
-    tracing::info!("Reindex complete");
     Ok(Json(ReindexResponse {
-        works: total_works,
-        authors: total_authors,
-        editions: total_editions,
+        works: state.search.works.doc_count() as i64,
+        authors: state.search.authors.doc_count() as i64,
+        editions: state.search.editions.doc_count() as i64,
     }))
-}
-
-fn extract_year(date: &Option<String>) -> Option<i64> {
-    date.as_ref().and_then(|d| {
-        d.chars()
-            .collect::<String>()
-            .split(|c: char| !c.is_ascii_digit())
-            .find(|s| s.len() == 4)
-            .and_then(|y| y.parse().ok())
-    })
 }
 
 async fn health() -> &'static str {

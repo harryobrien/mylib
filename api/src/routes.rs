@@ -112,6 +112,7 @@ pub struct WorkResponse {
     #[serde(flatten)]
     work: db::Work,
     authors: Vec<db::Author>,
+    editions: Vec<db::Edition>,
 }
 
 async fn get_work(
@@ -124,9 +125,12 @@ async fn get_work(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let authors = db::get_work_authors(&state.db, work.id).await?;
+    let (authors, editions) = tokio::join!(
+        db::get_work_authors(&state.db, work.id),
+        db::get_work_editions(&state.db, work.id)
+    );
 
-    Ok(Json(WorkResponse { work, authors }))
+    Ok(Json(WorkResponse { work, authors: authors?, editions: editions? }))
 }
 
 async fn get_work_authors(

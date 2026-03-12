@@ -2,14 +2,29 @@ use crate::{db, search::SearchIndex};
 use sqlx::PgPool;
 
 pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    let (works_result, authors_result, editions_result) = tokio::join!(
+        index_works(pool, search),
+        index_authors(pool, search),
+        index_editions(pool, search),
+    );
+
+    works_result?;
+    authors_result?;
+    editions_result?;
+
+    tracing::info!("Indexing complete");
+    Ok(())
+}
+
+async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing works...");
     let mut writer = search.works.writer()?;
-    let total_works = db::count_works(pool).await?;
+    let total = db::count_works(pool).await?;
     let mut offset = 0i64;
 
-    while offset < total_works {
+    while offset < total {
         let works = db::get_works_for_indexing(pool, offset, BATCH_SIZE).await?;
         for w in &works {
             let year = extract_year(&w.first_publish_date);
@@ -35,16 +50,21 @@ pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Resul
             writer.add_document(doc)?;
         }
         offset += BATCH_SIZE;
-        tracing::info!("  Works: {offset}/{total_works}");
+        tracing::info!("  Works: {offset}/{total}");
     }
     writer.commit()?;
+    Ok(())
+}
+
+async fn index_authors(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing authors...");
     let mut writer = search.authors.writer()?;
-    let total_authors = db::count_authors(pool).await?;
-    offset = 0;
+    let total = db::count_authors(pool).await?;
+    let mut offset = 0i64;
 
-    while offset < total_authors {
+    while offset < total {
         let authors = db::get_authors_for_indexing(pool, offset, BATCH_SIZE).await?;
         for a in &authors {
             let mut doc = tantivy::TantivyDocument::new();
@@ -60,16 +80,21 @@ pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Resul
             writer.add_document(doc)?;
         }
         offset += BATCH_SIZE;
-        tracing::info!("  Authors: {offset}/{total_authors}");
+        tracing::info!("  Authors: {offset}/{total}");
     }
     writer.commit()?;
+    Ok(())
+}
+
+async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing editions...");
     let mut writer = search.editions.writer()?;
-    let total_editions = db::count_editions(pool).await?;
-    offset = 0;
+    let total = db::count_editions(pool).await?;
+    let mut offset = 0i64;
 
-    while offset < total_editions {
+    while offset < total {
         let editions = db::get_editions_for_indexing(pool, offset, BATCH_SIZE).await?;
         for e in &editions {
             let year = extract_year(&e.publish_date);
@@ -93,10 +118,9 @@ pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Resul
             writer.add_document(doc)?;
         }
         offset += BATCH_SIZE;
-        tracing::info!("  Editions: {offset}/{total_editions}");
+        tracing::info!("  Editions: {offset}/{total}");
     }
     writer.commit()?;
-
     Ok(())
 }
 

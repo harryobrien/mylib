@@ -27,7 +27,7 @@ function esc(str) {
     <div class="authors">
       by {authors.map((a, i) => (
         <span>
-          <a href={a.key}>{esc(a.name)}</a>{i < authors.length - 1 && ', '}
+          <a href={`/authors/${a.slug}`}>{esc(a.name)}</a>{i < authors.length - 1 && ', '}
         </span>
       ))}
     </div>

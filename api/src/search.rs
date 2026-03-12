@@ -1,3 +1,4 @@
+use crate::base36;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs,
@@ -156,9 +157,11 @@ impl WorksIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
+            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
             results.push(WorkHit {
-                id: doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0),
-                key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                id,
+                slug: base36::encode(id),
+                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 title: doc.get_first(self.fields.title).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 subtitle: doc.get_first(self.fields.subtitle).and_then(|v| v.as_str()).map(String::from),
                 author_names: doc.get_first(self.fields.author_names).and_then(|v| v.as_str()).map(String::from),
@@ -173,7 +176,8 @@ impl WorksIndex {
 #[derive(Debug, serde::Serialize)]
 pub struct WorkHit {
     pub id: i64,
-    pub key: String,
+    pub slug: String,
+    pub ol_key: String,
     pub title: String,
     pub subtitle: Option<String>,
     pub author_names: Option<String>,
@@ -246,9 +250,11 @@ impl AuthorsIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
+            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
             results.push(AuthorHit {
-                id: doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0),
-                key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                id,
+                slug: base36::encode(id),
+                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 name: doc.get_first(self.fields.name).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 alternate_names: doc.get_first(self.fields.alternate_names).and_then(|v| v.as_str()).map(String::from),
                 score,
@@ -261,7 +267,8 @@ impl AuthorsIndex {
 #[derive(Debug, serde::Serialize)]
 pub struct AuthorHit {
     pub id: i64,
-    pub key: String,
+    pub slug: String,
+    pub ol_key: String,
     pub name: String,
     pub alternate_names: Option<String>,
     pub score: f32,
@@ -279,6 +286,7 @@ pub struct EditionsIndex {
 pub struct EditionsFields {
     pub id: Field,
     pub key: Field,
+    pub work_id: Field,
     pub work_key: Field,
     pub title: Field,
     pub subtitle: Field,
@@ -293,6 +301,7 @@ impl EditionsIndex {
 
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
+        let work_id = builder.add_i64_field("work_id", STORED | INDEXED);
         let work_key = builder.add_text_field("work_key", STRING | STORED);
         let title = builder.add_text_field("title", TEXT | STORED);
         let subtitle = builder.add_text_field("subtitle", TEXT | STORED);
@@ -301,7 +310,7 @@ impl EditionsIndex {
         let publish_year = builder.add_i64_field("publish_year", INDEXED | STORED);
 
         let fields = EditionsFields {
-            id, key, work_key, title, subtitle, isbns, publishers, publish_year,
+            id, key, work_id, work_key, title, subtitle, isbns, publishers, publish_year,
         };
         (builder.build(), fields)
     }
@@ -340,10 +349,13 @@ impl EditionsIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
+            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
+            let work_id = doc.get_first(self.fields.work_id).and_then(|v| v.as_i64()).unwrap_or(0);
             results.push(EditionHit {
-                id: doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0),
-                key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                work_key: doc.get_first(self.fields.work_key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                id,
+                slug: base36::encode(id),
+                work_slug: base36::encode(work_id),
+                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 title: doc.get_first(self.fields.title).and_then(|v| v.as_str()).unwrap_or("").to_string(),
                 subtitle: doc.get_first(self.fields.subtitle).and_then(|v| v.as_str()).map(String::from),
                 isbns: doc.get_first(self.fields.isbns).and_then(|v| v.as_str()).map(String::from),
@@ -359,8 +371,9 @@ impl EditionsIndex {
 #[derive(Debug, serde::Serialize)]
 pub struct EditionHit {
     pub id: i64,
-    pub key: String,
-    pub work_key: String,
+    pub slug: String,
+    pub work_slug: String,
+    pub ol_key: String,
     pub title: String,
     pub subtitle: Option<String>,
     pub isbns: Option<String>,

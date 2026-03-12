@@ -156,7 +156,7 @@ export default function SearchBox() {
       <div className="results">
         {results.length === 0 && query && <div className="empty">No results</div>}
         {results.map((r, i) => (
-          <a href={r._type === 'edition' ? r.work_key : r.key} key={`${r._type}-${r.id}`} className="result" onClick={() => saveToHistory(query)}>
+          <a href={`/${r._type === 'edition' ? 'works' : r._type + 's'}/${r._type === 'edition' ? r.work_slug : r.slug}`} key={`${r._type}-${r.id}`} className="result" onClick={() => saveToHistory(query)}>
             <span className={`tag tag-${r._type}`}>{r._type}</span>
             <div className="result-content">
               <div className="result-title">{esc(r.title || r.name)}</div>

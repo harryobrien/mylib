@@ -225,6 +225,7 @@ pub async fn get_authors_for_indexing(pool: &PgPool, offset: i64, limit: i64) ->
 pub struct EditionForIndex {
     pub id: i32,
     pub key: String,
+    pub work_id: i32,
     pub work_key: String,
     pub title: String,
     pub subtitle: Option<String>,
@@ -236,7 +237,7 @@ pub struct EditionForIndex {
 pub async fn get_editions_for_indexing(pool: &PgPool, offset: i64, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
     sqlx::query_as(
         r#"
-        SELECT e.id, e.key, w.key as work_key, e.title, e.subtitle,
+        SELECT e.id, e.key, e.work_id, w.key as work_key, e.title, e.subtitle,
                string_agg(DISTINCT ei.isbn, ' ') as isbns,
                string_agg(DISTINCT ep.publisher, ' | ') as publishers,
                e.publish_date

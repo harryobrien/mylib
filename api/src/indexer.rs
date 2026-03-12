@@ -101,6 +101,7 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<(
             let mut doc = tantivy::TantivyDocument::new();
             doc.add_i64(search.editions.fields.id, e.id as i64);
             doc.add_text(search.editions.fields.key, &e.key);
+            doc.add_i64(search.editions.fields.work_id, e.work_id as i64);
             doc.add_text(search.editions.fields.work_key, &e.work_key);
             doc.add_text(search.editions.fields.title, &e.title);
             if let Some(ref s) = e.subtitle {

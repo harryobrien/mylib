@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{db, indexer, search, AppState};
+use crate::{base36, db, indexer, search, AppState};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -17,13 +17,13 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/search/works", get(search_works))
         .route("/search/authors", get(search_authors))
         .route("/search/editions", get(search_editions))
-        // Resource endpoints
-        .route("/works/{key}", get(get_work))
-        .route("/works/{key}/authors", get(get_work_authors))
-        .route("/works/{key}/editions", get(get_work_editions))
-        .route("/authors/{key}", get(get_author))
-        .route("/authors/{key}/works", get(get_author_works))
-        .route("/editions/{key}", get(get_edition))
+        // Resource endpoints (slug = base36 encoded ID)
+        .route("/works/{slug}", get(get_work))
+        .route("/works/{slug}/authors", get(get_work_authors))
+        .route("/works/{slug}/editions", get(get_work_editions))
+        .route("/authors/{slug}", get(get_author))
+        .route("/authors/{slug}/works", get(get_author_works))
+        .route("/editions/{slug}", get(get_edition))
         // Admin endpoints
         .route("/admin/reindex", get(reindex))
         .route("/health", get(health))
@@ -109,19 +109,41 @@ async fn search_editions(
 
 #[derive(Serialize)]
 pub struct WorkResponse {
+    slug: String,
     #[serde(flatten)]
     work: db::Work,
-    authors: Vec<db::Author>,
-    editions: Vec<db::Edition>,
+    authors: Vec<AuthorSummary>,
+    editions: Vec<EditionSummary>,
+}
+
+#[derive(Serialize)]
+pub struct AuthorSummary {
+    slug: String,
+    #[serde(flatten)]
+    author: db::Author,
+}
+
+#[derive(Serialize)]
+pub struct EditionSummary {
+    slug: String,
+    #[serde(flatten)]
+    edition: db::Edition,
+}
+
+#[derive(Serialize)]
+pub struct WorkSummary {
+    slug: String,
+    #[serde(flatten)]
+    work: db::Work,
 }
 
 async fn get_work(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
+    Path(slug): Path<String>,
 ) -> Result<Json<WorkResponse>, AppError> {
-    let full_key = if key.starts_with("/works/") { key } else { format!("/works/{key}") };
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let work = db::get_work_by_key(&state.db, &full_key)
+    let work = db::get_work_by_id(&state.db, id)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -130,44 +152,46 @@ async fn get_work(
         db::get_work_editions(&state.db, work.id)
     );
 
-    Ok(Json(WorkResponse { work, authors: authors?, editions: editions? }))
+    let authors = authors?.into_iter().map(|a| AuthorSummary {
+        slug: base36::encode(a.id as i64),
+        author: a,
+    }).collect();
+
+    let editions = editions?.into_iter().map(|e| EditionSummary {
+        slug: base36::encode(e.id as i64),
+        edition: e,
+    }).collect();
+
+    Ok(Json(WorkResponse { slug, work, authors, editions }))
 }
 
 async fn get_work_authors(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
+    Path(slug): Path<String>,
 ) -> Result<Json<Vec<db::Author>>, AppError> {
-    let full_key = if key.starts_with("/works/") { key } else { format!("/works/{key}") };
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let work = db::get_work_by_key(&state.db, &full_key)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    let authors = db::get_work_authors(&state.db, work.id).await?;
+    let authors = db::get_work_authors(&state.db, id).await?;
     Ok(Json(authors))
 }
 
 async fn get_work_editions(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
+    Path(slug): Path<String>,
 ) -> Result<Json<Vec<db::Edition>>, AppError> {
-    let full_key = if key.starts_with("/works/") { key } else { format!("/works/{key}") };
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let work = db::get_work_by_key(&state.db, &full_key)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    let editions = db::get_work_editions(&state.db, work.id).await?;
+    let editions = db::get_work_editions(&state.db, id).await?;
     Ok(Json(editions))
 }
 
 async fn get_author(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
+    Path(slug): Path<String>,
 ) -> Result<Json<db::Author>, AppError> {
-    let full_key = if key.starts_with("/authors/") { key } else { format!("/authors/{key}") };
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let author = db::get_author_by_key(&state.db, &full_key)
+    let author = db::get_author_by_id(&state.db, id)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -176,15 +200,15 @@ async fn get_author(
 
 async fn get_author_works(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
-) -> Result<Json<Vec<db::Work>>, AppError> {
-    let full_key = if key.starts_with("/authors/") { key } else { format!("/authors/{key}") };
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<WorkSummary>>, AppError> {
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let author = db::get_author_by_key(&state.db, &full_key)
-        .await?
-        .ok_or(AppError::NotFound)?;
-
-    let works = db::get_author_works(&state.db, author.id).await?;
+    let works = db::get_author_works(&state.db, id).await?;
+    let works = works.into_iter().map(|w| WorkSummary {
+        slug: base36::encode(w.id as i64),
+        work: w,
+    }).collect();
     Ok(Json(works))
 }
 
@@ -197,11 +221,11 @@ pub struct EditionResponse {
 
 async fn get_edition(
     State(state): State<Arc<AppState>>,
-    Path(key): Path<String>,
+    Path(slug): Path<String>,
 ) -> Result<Json<EditionResponse>, AppError> {
-    let full_key = if key.starts_with("/books/") { key } else { format!("/books/{key}") };
+    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let edition = db::get_edition_by_key(&state.db, &full_key)
+    let edition = db::get_edition_by_id(&state.db, id)
         .await?
         .ok_or(AppError::NotFound)?;
 

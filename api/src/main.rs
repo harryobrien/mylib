@@ -1,3 +1,4 @@
+mod base36;
 mod db;
 mod indexer;
 mod routes;

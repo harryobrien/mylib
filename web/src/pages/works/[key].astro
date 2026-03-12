@@ -1,7 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
 
 const workRes = await fetch(`${API_BASE}/works/${key}`);

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 const STORAGE_KEY = 'mylib_search';
 const HISTORY_KEY = 'mylib_history';
 

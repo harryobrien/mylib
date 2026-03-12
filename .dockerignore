@@ -1,0 +1,9 @@
+target
+web/node_modules
+web/dist
+web/.astro
+sample
+scripts
+*.md
+.git
+.env

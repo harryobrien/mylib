@@ -1,4 +1,4 @@
-FROM rust:1.77 AS builder
+FROM rust:1.93 AS builder
 
 WORKDIR /app
 
@@ -11,10 +11,10 @@ RUN cargo build --release --package mylib-api
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+	ca-certificates \
+	libssl3 \
+	curl \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

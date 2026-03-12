@@ -1,45 +1,49 @@
 import { useState, useEffect } from 'react';
+import type { MouseEvent } from 'react';
 
 const STORAGE_KEY = 'mylib_search';
 const HISTORY_KEY = 'mylib_history';
 
+interface SavedState {
+  q: string;
+  r: unknown[];
+  s: string;
+}
+
 export default function SearchPortal() {
-  const [history, setHistory] = useState([]);
-  const [currentQuery, setCurrentQuery] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [currentQuery, setCurrentQuery] = useState<string>('');
 
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const { q } = JSON.parse(saved);
+        const { q } = JSON.parse(saved) as SavedState;
         if (q) setCurrentQuery(q);
       }
-      const hist = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+      const hist: string[] = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
       setHistory(hist);
-    } catch (e) {}
+    } catch {}
 
-    // Listen for query changes
-    function handleSearchQuery(e) {
+    function handleSearchQuery(e: CustomEvent<string>): void {
       setCurrentQuery(e.detail);
     }
-    window.addEventListener('searchquery', handleSearchQuery);
-    return () => window.removeEventListener('searchquery', handleSearchQuery);
+    window.addEventListener('searchquery', handleSearchQuery as EventListener);
+    return () => window.removeEventListener('searchquery', handleSearchQuery as EventListener);
   }, []);
 
-  function handleClick(e, query) {
-    // Set this as the current search so it loads when returning
+  function handleClick(e: MouseEvent<HTMLAnchorElement>, query: string): void {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q: query, r: [], s: '' }));
-    } catch (e) {}
+    } catch {}
 
-    // If we're on the search page, dispatch event instead of navigating
     if (window.location.pathname === '/') {
       e.preventDefault();
       window.dispatchEvent(new CustomEvent('searchquery', { detail: query }));
     }
   }
 
-  function clearHistory() {
+  function clearHistory(): void {
     sessionStorage.removeItem(HISTORY_KEY);
     setHistory([]);
   }

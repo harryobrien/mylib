@@ -1,109 +1,169 @@
 import { useState, useRef, useEffect } from 'react';
+import type { ChangeEvent } from 'react';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 const STORAGE_KEY = 'mylib_search';
 const HISTORY_KEY = 'mylib_history';
 
-function esc(str) {
+interface WorkHit {
+  id: number;
+  slug: string;
+  ol_key: string;
+  title: string;
+  subtitle?: string;
+  author_names?: string;
+  first_publish_year?: number;
+  score: number;
+}
+
+interface AuthorHit {
+  id: number;
+  slug: string;
+  ol_key: string;
+  name: string;
+  alternate_names?: string;
+  score: number;
+}
+
+interface EditionHit {
+  id: number;
+  slug: string;
+  work_slug: string;
+  ol_key: string;
+  title: string;
+  subtitle?: string;
+  isbns?: string;
+  publishers?: string;
+  publish_year?: number;
+  score: number;
+}
+
+interface SearchResponse {
+  query: string;
+  works: WorkHit[];
+  authors: AuthorHit[];
+  editions: EditionHit[];
+}
+
+type ResultType = 'work' | 'author' | 'edition';
+
+interface TaggedResult {
+  _type: ResultType;
+  _score: number;
+  id: number;
+  slug: string;
+  work_slug?: string;
+  title?: string;
+  name?: string;
+  subtitle?: string;
+  author_names?: string;
+  alternate_names?: string;
+  publishers?: string;
+  publish_year?: number;
+  isbns?: string;
+}
+
+interface SavedState {
+  q: string;
+  r: TaggedResult[];
+  s: string;
+}
+
+function esc(str: string | undefined): string {
   if (!str) return '';
   return str.replace(/[\uFE20\uFE21]/g, '');
 }
 
-function scoreResult(r, query) {
+function scoreResult(r: TaggedResult, query: string): number {
   const q = query.toLowerCase();
   const primary = (r.name || r.title || '').toLowerCase();
 
-  // Exact match on primary field
   if (primary === q) return 100;
-
-  // Primary field starts with query
   if (primary.startsWith(q)) return 80;
 
-  // Query matches start of any word in primary field
   const words = primary.split(/\s+/);
   if (words.some(w => w.startsWith(q))) return 60;
 
-  // All query words appear in primary field
   const qWords = q.split(/\s+/);
   if (qWords.every(qw => primary.includes(qw))) return 50;
 
-  // Partial match
   if (primary.includes(q)) return 40;
 
-  // Author match on works/editions
   if (r.author_names && r.author_names.toLowerCase().includes(q)) return 30;
 
   return 10;
 }
 
 export default function SearchBox() {
-  const [query, setQuery] = useState(() => {
+  const [query, setQuery] = useState<string>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved).q || '';
-    } catch (e) {}
+      if (saved) return (JSON.parse(saved) as SavedState).q || '';
+    } catch {}
     return '';
   });
-  const [results, setResults] = useState(() => {
+
+  const [results, setResults] = useState<TaggedResult[]>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved).r || [];
-    } catch (e) {}
+      if (saved) return (JSON.parse(saved) as SavedState).r || [];
+    } catch {}
     return [];
   });
-  const [stats, setStats] = useState(() => {
+
+  const [stats, setStats] = useState<string>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved).s || '';
-    } catch (e) {}
+      if (saved) return (JSON.parse(saved) as SavedState).s || '';
+    } catch {}
     return '';
   });
-  const debounceRef = useRef(null);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    function handleSearchQuery(e) {
+    function handleSearchQuery(e: CustomEvent<string>): void {
       const q = e.detail;
       setQuery(q);
       search(q);
     }
-    function handleClear() {
+    function handleClear(): void {
       setQuery('');
       setResults([]);
       setStats('');
       saveState('', [], '');
     }
-    window.addEventListener('searchquery', handleSearchQuery);
+    window.addEventListener('searchquery', handleSearchQuery as EventListener);
     window.addEventListener('searchclear', handleClear);
     return () => {
-      window.removeEventListener('searchquery', handleSearchQuery);
+      window.removeEventListener('searchquery', handleSearchQuery as EventListener);
       window.removeEventListener('searchclear', handleClear);
     };
   }, []);
 
-  // Search on mount if query exists but results are empty (from history click)
   useEffect(() => {
     if (query && results.length === 0) {
       search(query);
     }
   }, []);
 
-  function saveState(q, r, s) {
+  function saveState(q: string, r: TaggedResult[], s: string): void {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q, r, s }));
-    } catch (e) {}
+    } catch {}
   }
 
-  function saveToHistory(q) {
+  function saveToHistory(q: string): void {
     if (!q.trim()) return;
     try {
-      const history = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+      const history: string[] = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
       const filtered = history.filter(h => h !== q);
       filtered.unshift(q);
       sessionStorage.setItem(HISTORY_KEY, JSON.stringify(filtered.slice(0, 20)));
-    } catch (e) {}
+    } catch {}
   }
 
-  async function search(q) {
+  async function search(q: string): Promise<void> {
     if (!q.trim()) {
       setResults([]);
       setStats('');
@@ -115,13 +175,13 @@ export default function SearchBox() {
     try {
       const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=10`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data: SearchResponse = await res.json();
       const elapsed = (performance.now() - start).toFixed(0);
 
-      const combined = [
-        ...data.works.map(w => ({ ...w, _type: 'work' })),
-        ...data.authors.map(a => ({ ...a, _type: 'author' })),
-        ...data.editions.map(e => ({ ...e, _type: 'edition' })),
+      const combined: TaggedResult[] = [
+        ...data.works.map(w => ({ ...w, _type: 'work' as const, _score: 0 })),
+        ...data.authors.map(a => ({ ...a, title: a.name, _type: 'author' as const, _score: 0 })),
+        ...data.editions.map(e => ({ ...e, _type: 'edition' as const, _score: 0 })),
       ].map(r => ({ ...r, _score: scoreResult(r, q) }))
        .sort((a, b) => b._score - a._score);
 
@@ -130,14 +190,14 @@ export default function SearchBox() {
       setResults(combined);
       saveState(q, combined, statsText);
     } catch (err) {
-      setStats(`Error: ${err.message}`);
+      setStats(`Error: ${(err as Error).message}`);
     }
   }
 
-  function handleInput(e) {
+  function handleInput(e: ChangeEvent<HTMLInputElement>): void {
     const value = e.target.value;
     setQuery(value);
-    clearTimeout(debounceRef.current);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(value), 80);
   }
 
@@ -155,8 +215,13 @@ export default function SearchBox() {
 
       <div className="results">
         {results.length === 0 && query && <div className="empty">No results</div>}
-        {results.map((r, i) => (
-          <a href={`/${r._type === 'edition' ? 'works' : r._type + 's'}/${r._type === 'edition' ? r.work_slug : r.slug}`} key={`${r._type}-${r.id}`} className="result" onClick={() => saveToHistory(query)}>
+        {results.map((r) => (
+          <a
+            href={`/${r._type === 'edition' ? 'works' : r._type + 's'}/${r._type === 'edition' ? r.work_slug : r.slug}`}
+            key={`${r._type}-${r.id}`}
+            className="result"
+            onClick={() => saveToHistory(query)}
+          >
             <span className={`tag tag-${r._type}`}>{r._type}</span>
             <div className="result-content">
               <div className="result-title">{esc(r.title || r.name)}</div>
@@ -224,9 +289,11 @@ export default function SearchBox() {
           font-size: 10px;
           font-weight: 600;
           text-transform: uppercase;
-          padding: 3px 6px;
+          padding: 3px 0;
           flex-shrink: 0;
           margin-top: 2px;
+          width: 52px;
+          text-align: center;
         }
         .tag-work { background: #e8e4d9; color: #5a5549; }
         .tag-author { background: #d9e8d9; color: #3a5a3a; }

@@ -750,131 +750,151 @@ def refresh_materialized_views(conn):
 def load_popularity(conn: psycopg.Connection, ratings_path: Path | None, reading_log_path: Path | None):
     print("Loading popularity data...")
 
-    # Load key -> id mappings
     with conn.cursor() as cur:
-        cur.execute("SELECT key, id FROM works")
-        work_map = dict(cur.fetchall())
-        cur.execute("SELECT key, id FROM editions")
-        edition_map = dict(cur.fetchall())
-    print(f"  Loaded {len(work_map):,} work and {len(edition_map):,} edition mappings")
+        # Create temp tables for raw events
+        cur.execute("""
+            CREATE TEMP TABLE tmp_ratings (
+                work_key TEXT,
+                edition_key TEXT,
+                rating SMALLINT
+            ) ON COMMIT DROP
+        """)
+        cur.execute("""
+            CREATE TEMP TABLE tmp_reading_log (
+                work_key TEXT,
+                edition_key TEXT,
+                status TEXT
+            ) ON COMMIT DROP
+        """)
 
-    # Aggregators: {id: {field: count}}
-    work_pop: dict[int, dict[str, int]] = {}
-    edition_pop: dict[int, dict[str, int]] = {}
-
-    def ensure_work(wid):
-        if wid not in work_pop:
-            work_pop[wid] = {"ratings_count": 0, "ratings_sum": 0, "want_to_read": 0,
-                            "currently_reading": 0, "already_read": 0, "did_not_finish": 0}
-
-    def ensure_edition(eid):
-        if eid not in edition_pop:
-            edition_pop[eid] = {"ratings_count": 0, "ratings_sum": 0, "want_to_read": 0,
-                               "currently_reading": 0, "already_read": 0, "did_not_finish": 0}
-
-    # Process ratings
+    # Stream ratings into temp table
     if ratings_path:
-        print(f"  Processing ratings from {ratings_path}...")
+        print(f"  Loading ratings from {ratings_path}...")
         opener = gzip.open if ratings_path.suffix == ".gz" else open
         count = 0
-        with opener(ratings_path, "rt", encoding="utf-8") as f:
-            for line in f:
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) < 3:
-                    continue
-                work_key, edition_key, rating_str = parts[0], parts[1], parts[2]
-                try:
-                    rating = int(rating_str)
-                    if rating < 1 or rating > 5:
-                        continue
-                except ValueError:
-                    continue
+        with conn.cursor() as cur:
+            with cur.copy("COPY tmp_ratings (work_key, edition_key, rating) FROM STDIN") as copy:
+                with opener(ratings_path, "rt", encoding="utf-8") as f:
+                    for line in f:
+                        parts = line.rstrip("\n").split("\t")
+                        if len(parts) < 3:
+                            continue
+                        work_key, edition_key, rating_str = parts[0], parts[1], parts[2]
+                        try:
+                            rating = int(rating_str)
+                            if rating < 1 or rating > 5:
+                                continue
+                        except ValueError:
+                            continue
+                        copy.write_row((work_key, edition_key or None, rating))
+                        count += 1
+                        if count % 500000 == 0:
+                            print(f"    {count:,} ratings loaded...", end="\r")
+        print(f"    {count:,} ratings loaded")
 
-                work_id = work_map.get(work_key)
-                edition_id = edition_map.get(edition_key) if edition_key else None
-
-                if work_id:
-                    ensure_work(work_id)
-                    work_pop[work_id]["ratings_count"] += 1
-                    work_pop[work_id]["ratings_sum"] += rating
-
-                if edition_id:
-                    ensure_edition(edition_id)
-                    edition_pop[edition_id]["ratings_count"] += 1
-                    edition_pop[edition_id]["ratings_sum"] += rating
-
-                count += 1
-                if count % 100000 == 0:
-                    print(f"    {count:,} ratings processed...", end="\r")
-        print(f"    {count:,} ratings processed")
-
-    # Process reading log
+    # Stream reading log into temp table
     if reading_log_path:
-        print(f"  Processing reading log from {reading_log_path}...")
-        status_map = {
-            "Already Read": "already_read",
-            "Currently Reading": "currently_reading",
-            "Want to Read": "want_to_read",
-        }
+        print(f"  Loading reading log from {reading_log_path}...")
         opener = gzip.open if reading_log_path.suffix == ".gz" else open
         count = 0
-        with opener(reading_log_path, "rt", encoding="utf-8") as f:
-            for line in f:
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) < 3:
-                    continue
-                work_key, edition_key, status_raw = parts[0], parts[1], parts[2]
-                status = status_map.get(status_raw)
-                if not status:
-                    continue
-
-                work_id = work_map.get(work_key)
-                edition_id = edition_map.get(edition_key) if edition_key else None
-
-                if work_id:
-                    ensure_work(work_id)
-                    work_pop[work_id][status] += 1
-
-                if edition_id:
-                    ensure_edition(edition_id)
-                    edition_pop[edition_id][status] += 1
-
-                count += 1
-                if count % 100000 == 0:
-                    print(f"    {count:,} reading log entries processed...", end="\r")
-        print(f"    {count:,} reading log entries processed")
-
-    # Upsert into work_popularity
-    if work_pop:
-        print(f"  Upserting {len(work_pop):,} work popularity records...")
         with conn.cursor() as cur:
-            with cur.copy("""
-                COPY work_popularity (work_id, ratings_count, ratings_sum, want_to_read,
-                                     currently_reading, already_read, did_not_finish)
-                FROM STDIN
-            """) as copy:
-                for wid, stats in work_pop.items():
-                    copy.write_row((wid, stats["ratings_count"], stats["ratings_sum"],
-                                   stats["want_to_read"], stats["currently_reading"],
-                                   stats["already_read"], stats["did_not_finish"]))
-        conn.commit()
+            with cur.copy("COPY tmp_reading_log (work_key, edition_key, status) FROM STDIN") as copy:
+                with opener(reading_log_path, "rt", encoding="utf-8") as f:
+                    for line in f:
+                        parts = line.rstrip("\n").split("\t")
+                        if len(parts) < 3:
+                            continue
+                        work_key, edition_key, status = parts[0], parts[1], parts[2]
+                        if status not in ("Already Read", "Currently Reading", "Want to Read"):
+                            continue
+                        copy.write_row((work_key, edition_key or None, status))
+                        count += 1
+                        if count % 500000 == 0:
+                            print(f"    {count:,} reading log entries loaded...", end="\r")
+        print(f"    {count:,} reading log entries loaded")
 
-    # Upsert into edition_popularity
-    if edition_pop:
-        print(f"  Upserting {len(edition_pop):,} edition popularity records...")
-        with conn.cursor() as cur:
-            with cur.copy("""
-                COPY edition_popularity (edition_id, ratings_count, ratings_sum, want_to_read,
-                                        currently_reading, already_read, did_not_finish)
-                FROM STDIN
-            """) as copy:
-                for eid, stats in edition_pop.items():
-                    copy.write_row((eid, stats["ratings_count"], stats["ratings_sum"],
-                                   stats["want_to_read"], stats["currently_reading"],
-                                   stats["already_read"], stats["did_not_finish"]))
-        conn.commit()
+    # Aggregate and insert into work_popularity
+    print("  Aggregating work popularity...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO work_popularity (work_id, ratings_count, ratings_sum,
+                                         want_to_read, currently_reading, already_read, did_not_finish)
+            SELECT
+                w.id,
+                COALESCE(r.cnt, 0),
+                COALESCE(r.total, 0),
+                COALESCE(rl.want_to_read, 0),
+                COALESCE(rl.currently_reading, 0),
+                COALESCE(rl.already_read, 0),
+                0
+            FROM works w
+            LEFT JOIN (
+                SELECT work_key, COUNT(*) as cnt, SUM(rating) as total
+                FROM tmp_ratings
+                GROUP BY work_key
+            ) r ON r.work_key = w.key
+            LEFT JOIN (
+                SELECT work_key,
+                    COUNT(*) FILTER (WHERE status = 'Want to Read') as want_to_read,
+                    COUNT(*) FILTER (WHERE status = 'Currently Reading') as currently_reading,
+                    COUNT(*) FILTER (WHERE status = 'Already Read') as already_read
+                FROM tmp_reading_log
+                GROUP BY work_key
+            ) rl ON rl.work_key = w.key
+            WHERE r.work_key IS NOT NULL OR rl.work_key IS NOT NULL
+            ON CONFLICT (work_id) DO UPDATE SET
+                ratings_count = EXCLUDED.ratings_count,
+                ratings_sum = EXCLUDED.ratings_sum,
+                want_to_read = EXCLUDED.want_to_read,
+                currently_reading = EXCLUDED.currently_reading,
+                already_read = EXCLUDED.already_read
+        """)
+        work_count = cur.rowcount
+    conn.commit()
+    print(f"    {work_count:,} work records")
 
-    print(f"  Done: {len(work_pop):,} works, {len(edition_pop):,} editions")
+    # Aggregate and insert into edition_popularity
+    print("  Aggregating edition popularity...")
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO edition_popularity (edition_id, ratings_count, ratings_sum,
+                                            want_to_read, currently_reading, already_read, did_not_finish)
+            SELECT
+                e.id,
+                COALESCE(r.cnt, 0),
+                COALESCE(r.total, 0),
+                COALESCE(rl.want_to_read, 0),
+                COALESCE(rl.currently_reading, 0),
+                COALESCE(rl.already_read, 0),
+                0
+            FROM editions e
+            LEFT JOIN (
+                SELECT edition_key, COUNT(*) as cnt, SUM(rating) as total
+                FROM tmp_ratings
+                WHERE edition_key IS NOT NULL
+                GROUP BY edition_key
+            ) r ON r.edition_key = e.key
+            LEFT JOIN (
+                SELECT edition_key,
+                    COUNT(*) FILTER (WHERE status = 'Want to Read') as want_to_read,
+                    COUNT(*) FILTER (WHERE status = 'Currently Reading') as currently_reading,
+                    COUNT(*) FILTER (WHERE status = 'Already Read') as already_read
+                FROM tmp_reading_log
+                WHERE edition_key IS NOT NULL
+                GROUP BY edition_key
+            ) rl ON rl.edition_key = e.key
+            WHERE r.edition_key IS NOT NULL OR rl.edition_key IS NOT NULL
+            ON CONFLICT (edition_id) DO UPDATE SET
+                ratings_count = EXCLUDED.ratings_count,
+                ratings_sum = EXCLUDED.ratings_sum,
+                want_to_read = EXCLUDED.want_to_read,
+                currently_reading = EXCLUDED.currently_reading,
+                already_read = EXCLUDED.already_read
+        """)
+        edition_count = cur.rowcount
+    conn.commit()
+
+    print(f"  Done: {work_count:,} works, {edition_count:,} editions")
 
 
 def main():

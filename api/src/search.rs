@@ -47,7 +47,9 @@ fn build_search_query(
     let mut subqueries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
     // Use QueryParser for main fields - handles tokenization/stemming properly
-    let parser = QueryParser::for_index(index, fields.to_vec());
+    // Use AND by default so all terms must match (e.g., "Goblet of Fire" requires both goblet AND fire)
+    let mut parser = QueryParser::for_index(index, fields.to_vec());
+    parser.set_conjunction_by_default();
     if let Ok(parsed) = parser.parse_query(query_str) {
         subqueries.push((Occur::Should, Box::new(BoostQuery::new(parsed, 2.0))));
     }

@@ -37,7 +37,7 @@ pub struct Edition {
 
 pub async fn get_work_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Work>> {
     sqlx::query_as(
-        "SELECT id, key, title, subtitle, first_publish_date, description FROM works WHERE id = $1"
+        "SELECT id, key, title, subtitle, first_publish_date, description FROM works WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -55,7 +55,7 @@ pub async fn get_work_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Wo
 
 pub async fn get_author_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Author>> {
     sqlx::query_as(
-        "SELECT id, key, name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = $1"
+        "SELECT id, key, name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -85,7 +85,7 @@ pub async fn get_edition_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Ed
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.id = $1
         GROUP BY e.id
-        "#
+        "#,
     )
     .bind(id)
     .fetch_optional(pool)
@@ -106,7 +106,7 @@ pub async fn get_edition_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.key = $1
         GROUP BY e.id
-        "#
+        "#,
     )
     .bind(key)
     .fetch_optional(pool)
@@ -121,7 +121,7 @@ pub async fn get_author_works(pool: &PgPool, author_id: i32) -> sqlx::Result<Vec
         JOIN work_authors wa ON w.id = wa.work_id
         WHERE wa.author_id = $1
         ORDER BY w.first_publish_date DESC NULLS LAST
-        "#
+        "#,
     )
     .bind(author_id)
     .fetch_all(pool)
@@ -136,7 +136,7 @@ pub async fn get_work_authors(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<A
         JOIN work_authors wa ON a.id = wa.author_id
         WHERE wa.work_id = $1
         ORDER BY wa.position
-        "#
+        "#,
     )
     .bind(work_id)
     .fetch_all(pool)
@@ -158,7 +158,7 @@ pub async fn get_work_editions(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<
         WHERE e.work_id = $1
         GROUP BY e.id
         ORDER BY e.publish_date DESC NULLS LAST
-        "#
+        "#,
     )
     .bind(work_id)
     .fetch_all(pool)
@@ -166,10 +166,11 @@ pub async fn get_work_editions(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<
 }
 
 pub async fn get_edition_isbns(pool: &PgPool, edition_id: i32) -> sqlx::Result<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT isbn FROM edition_isbns WHERE edition_id = $1")
-        .bind(edition_id)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT isbn FROM edition_isbns WHERE edition_id = $1")
+            .bind(edition_id)
+            .fetch_all(pool)
+            .await?;
     Ok(rows.into_iter().map(|(isbn,)| isbn).collect())
 }
 
@@ -180,7 +181,10 @@ pub struct CoverMetadata {
     pub height: i32,
 }
 
-pub async fn get_edition_covers(pool: &PgPool, edition_id: i32) -> sqlx::Result<Vec<CoverMetadata>> {
+pub async fn get_edition_covers(
+    pool: &PgPool,
+    edition_id: i32,
+) -> sqlx::Result<Vec<CoverMetadata>> {
     sqlx::query_as(
         r#"
         SELECT cm.id, cm.width, cm.height
@@ -188,7 +192,7 @@ pub async fn get_edition_covers(pool: &PgPool, edition_id: i32) -> sqlx::Result<
         JOIN cover_metadata cm ON ec.cover_id = cm.id
         WHERE ec.edition_id = $1
         ORDER BY ec.position
-        "#
+        "#,
     )
     .bind(edition_id)
     .fetch_all(pool)
@@ -208,7 +212,11 @@ pub struct WorkForIndex {
     pub cover_id: Option<i64>,
 }
 
-pub async fn get_works_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<WorkForIndex>> {
+pub async fn get_works_for_indexing(
+    pool: &PgPool,
+    after_id: i32,
+    limit: i64,
+) -> sqlx::Result<Vec<WorkForIndex>> {
     sqlx::query_as(
         r#"
         SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
@@ -223,7 +231,7 @@ pub async fn get_works_for_indexing(pool: &PgPool, after_id: i32, limit: i64) ->
         WHERE w.id > $1
         ORDER BY w.id
         LIMIT $2
-        "#
+        "#,
     )
     .bind(after_id)
     .bind(limit)
@@ -240,7 +248,11 @@ pub struct AuthorForIndex {
     pub bio: Option<String>,
 }
 
-pub async fn get_authors_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<AuthorForIndex>> {
+pub async fn get_authors_for_indexing(
+    pool: &PgPool,
+    after_id: i32,
+    limit: i64,
+) -> sqlx::Result<Vec<AuthorForIndex>> {
     sqlx::query_as(
         r#"
         SELECT a.id, a.key, a.name,
@@ -251,7 +263,7 @@ pub async fn get_authors_for_indexing(pool: &PgPool, after_id: i32, limit: i64) 
         WHERE a.id > $1
         ORDER BY a.id
         LIMIT $2
-        "#
+        "#,
     )
     .bind(after_id)
     .bind(limit)
@@ -273,7 +285,11 @@ pub struct EditionForIndex {
     pub cover_id: Option<i64>,
 }
 
-pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
+pub async fn get_editions_for_indexing(
+    pool: &PgPool,
+    after_id: i32,
+    limit: i64,
+) -> sqlx::Result<Vec<EditionForIndex>> {
     sqlx::query_as(
         r#"
         SELECT e.id, e.key, e.work_id, w.key as work_key,
@@ -289,7 +305,7 @@ pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64)
         WHERE e.id > $1
         ORDER BY e.id
         LIMIT $2
-        "#
+        "#,
     )
     .bind(after_id)
     .bind(limit)
@@ -325,7 +341,11 @@ pub struct WorkCover {
 }
 
 /// Get covers for works (for backfilling index)
-pub async fn get_work_covers(pool: &PgPool, after_work_id: i32, limit: i64) -> sqlx::Result<Vec<WorkCover>> {
+pub async fn get_work_covers(
+    pool: &PgPool,
+    after_work_id: i32,
+    limit: i64,
+) -> sqlx::Result<Vec<WorkCover>> {
     sqlx::query_as(
         r#"
         SELECT w.id as work_id, cover.cover_id
@@ -342,7 +362,7 @@ pub async fn get_work_covers(pool: &PgPool, after_work_id: i32, limit: i64) -> s
         WHERE w.id > $1
         ORDER BY w.id
         LIMIT $2
-        "#
+        "#,
     )
     .bind(after_work_id)
     .bind(limit)

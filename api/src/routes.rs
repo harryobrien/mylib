@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -7,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::{base36, db, search, AppState};
 
@@ -34,7 +34,9 @@ pub struct SearchQuery {
     limit: usize,
 }
 
-fn default_limit() -> usize { 20 }
+fn default_limit() -> usize {
+    20
+}
 
 #[derive(Serialize)]
 pub struct SearchResponse<T> {
@@ -150,17 +152,28 @@ async fn get_work(
         db::get_work_editions(&state.db, work.id)
     );
 
-    let authors = authors?.into_iter().map(|a| AuthorSummary {
-        slug: base36::encode(a.id as i64),
-        author: a,
-    }).collect();
+    let authors = authors?
+        .into_iter()
+        .map(|a| AuthorSummary {
+            slug: base36::encode(a.id as i64),
+            author: a,
+        })
+        .collect();
 
-    let editions = editions?.into_iter().map(|e| EditionSummary {
-        slug: base36::encode(e.id as i64),
-        edition: e,
-    }).collect();
+    let editions = editions?
+        .into_iter()
+        .map(|e| EditionSummary {
+            slug: base36::encode(e.id as i64),
+            edition: e,
+        })
+        .collect();
 
-    Ok(Json(WorkResponse { slug, work, authors, editions }))
+    Ok(Json(WorkResponse {
+        slug,
+        work,
+        authors,
+        editions,
+    }))
 }
 
 async fn get_work_authors(
@@ -203,10 +216,13 @@ async fn get_author_works(
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
     let works = db::get_author_works(&state.db, id).await?;
-    let works = works.into_iter().map(|w| WorkSummary {
-        slug: base36::encode(w.id as i64),
-        work: w,
-    }).collect();
+    let works = works
+        .into_iter()
+        .map(|w| WorkSummary {
+            slug: base36::encode(w.id as i64),
+            work: w,
+        })
+        .collect();
     Ok(Json(works))
 }
 
@@ -233,7 +249,11 @@ async fn get_edition(
         db::get_edition_covers(&state.db, edition.id)
     );
 
-    Ok(Json(EditionResponse { edition, isbns: isbns?, covers: covers? }))
+    Ok(Json(EditionResponse {
+        edition,
+        isbns: isbns?,
+        covers: covers?,
+    }))
 }
 
 async fn health() -> &'static str {

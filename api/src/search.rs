@@ -49,7 +49,10 @@ fn build_fuzzy_query(
                     queries.push((
                         Occur::Should,
                         Box::new(BoostQuery::new(
-                            Box::new(TermQuery::new(tantivy_term.clone(), IndexRecordOption::Basic)),
+                            Box::new(TermQuery::new(
+                                tantivy_term.clone(),
+                                IndexRecordOption::Basic,
+                            )),
                             2.0,
                         )),
                     ));
@@ -74,7 +77,10 @@ fn build_fuzzy_query(
                                 (
                                     Occur::Should,
                                     Box::new(BoostQuery::new(
-                                        Box::new(TermQuery::new(tantivy_term, IndexRecordOption::Basic)),
+                                        Box::new(TermQuery::new(
+                                            tantivy_term,
+                                            IndexRecordOption::Basic,
+                                        )),
                                         1.5,
                                     )) as Box<dyn Query>,
                                 )
@@ -184,7 +190,6 @@ impl WorksIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -351,7 +356,6 @@ impl AuthorsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -504,7 +508,6 @@ impl EditionsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)

@@ -2,12 +2,23 @@ use crate::base36;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs,
-    query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query},
+    query::{AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, RegexQuery, TermQuery},
     schema::*,
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term,
 };
 
-/// Build a search query using fuzzy matching for typo tolerance
+fn regex_escape(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() * 2);
+    for c in s.chars() {
+        if "\\^$.|?*+()[]{}".contains(c) {
+            result.push('\\');
+        }
+        result.push(c);
+    }
+    result
+}
+
+/// Build a search query: exact matches (boosted) + fuzzy + prefix on last term
 fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn Query> {
     let query_lower = query.to_lowercase();
     let terms: Vec<&str> = query_lower.split_whitespace().collect();
@@ -18,14 +29,41 @@ fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn
 
     let term_queries: Vec<(Occur, Box<dyn Query>)> = terms
         .iter()
-        .map(|term| {
+        .enumerate()
+        .map(|(i, term)| {
+            let is_last = i == terms.len() - 1;
             let field_queries: Vec<(Occur, Box<dyn Query>)> = fields
                 .iter()
-                .map(|field| {
+                .flat_map(|field| {
+                    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
                     let tantivy_term = Term::from_field_text(*field, term);
-                    let fuzzy: Box<dyn Query> =
-                        Box::new(FuzzyTermQuery::new(tantivy_term, 1, true));
-                    (Occur::Should, fuzzy)
+
+                    // Exact match with boost
+                    queries.push((
+                        Occur::Should,
+                        Box::new(BoostQuery::new(
+                            Box::new(TermQuery::new(tantivy_term.clone(), IndexRecordOption::Basic)),
+                            2.0,
+                        )),
+                    ));
+
+                    // Fuzzy match for typo tolerance (skip for very short terms)
+                    if term.len() >= 3 {
+                        queries.push((
+                            Occur::Should,
+                            Box::new(FuzzyTermQuery::new(tantivy_term.clone(), 1, true)),
+                        ));
+                    }
+
+                    // Prefix matching for the last term (likely incomplete)
+                    if is_last && term.len() >= 2 {
+                        let pattern = format!("{}.*", regex_escape(term));
+                        if let Ok(regex_q) = RegexQuery::from_pattern(&pattern, *field) {
+                            queries.push((Occur::Should, Box::new(regex_q)));
+                        }
+                    }
+
+                    queries
                 })
                 .collect();
 

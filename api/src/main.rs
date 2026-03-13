@@ -61,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
         search.editions.doc_count()
     );
 
+    tracing::info!("Warming search indexes...");
+    search.warm();
+    tracing::info!("Search indexes warmed");
+
     if backfill_covers {
         tracing::info!("Backfilling covers...");
         indexer::backfill_covers(&db, &search).await?;

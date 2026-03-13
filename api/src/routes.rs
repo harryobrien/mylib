@@ -57,11 +57,26 @@ async fn search_all(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<UnifiedSearchResponse>, AppError> {
-    let limit = params.limit.min(10); // Cap per-category for unified search
+    let limit = params.limit.min(10);
+    let q = params.q.clone();
 
-    let works = state.search.works.search(&params.q, limit)?;
-    let authors = state.search.authors.search(&params.q, limit)?;
-    let editions = state.search.editions.search(&params.q, limit)?;
+    let state_clone = state.clone();
+    let q1 = q.clone();
+    let works_handle = tokio::task::spawn_blocking(move || state_clone.search.works.search(&q1, limit));
+
+    let state_clone = state.clone();
+    let q2 = q.clone();
+    let authors_handle = tokio::task::spawn_blocking(move || state_clone.search.authors.search(&q2, limit));
+
+    let state_clone = state.clone();
+    let q3 = q.clone();
+    let editions_handle = tokio::task::spawn_blocking(move || state_clone.search.editions.search(&q3, limit));
+
+    let (works_res, authors_res, editions_res) = tokio::join!(works_handle, authors_handle, editions_handle);
+
+    let works = works_res.map_err(|e| AppError::Internal(e.into()))??;
+    let authors = authors_res.map_err(|e| AppError::Internal(e.into()))??;
+    let editions = editions_res.map_err(|e| AppError::Internal(e.into()))??;
 
     Ok(Json(UnifiedSearchResponse {
         query: params.q,

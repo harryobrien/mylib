@@ -109,6 +109,13 @@ impl SearchIndex {
             && self.authors.doc_count() == 0
             && self.editions.doc_count() == 0
     }
+
+    /// Warm the indexes by loading segment readers and term dictionaries into memory
+    pub fn warm(&self) {
+        self.works.warm();
+        self.authors.warm();
+        self.editions.warm();
+    }
 }
 
 // --- Works Index ---
@@ -233,6 +240,24 @@ impl WorksIndex {
             Ok(Some(searcher.doc(*doc_address)?))
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn warm(&self) {
+        let searcher = self.reader.searcher();
+        let fields_to_warm = [
+            self.fields.title,
+            self.fields.title_ngram,
+            self.fields.author_names,
+            self.fields.author_names_ngram,
+            self.fields.subjects,
+        ];
+        for segment_reader in searcher.segment_readers() {
+            for field in &fields_to_warm {
+                if let Ok(idx) = segment_reader.inverted_index(*field) {
+                    let _ = idx.terms().num_terms();
+                }
+            }
         }
     }
 
@@ -397,6 +422,18 @@ impl AuthorsIndex {
         }
     }
 
+    pub fn warm(&self) {
+        let searcher = self.reader.searcher();
+        let fields_to_warm = [self.fields.name, self.fields.name_ngram, self.fields.alternate_names];
+        for segment_reader in searcher.segment_readers() {
+            for field in &fields_to_warm {
+                if let Ok(idx) = segment_reader.inverted_index(*field) {
+                    let _ = idx.terms().num_terms();
+                }
+            }
+        }
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<AuthorHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![self.fields.name, self.fields.alternate_names];
@@ -554,6 +591,23 @@ impl EditionsIndex {
             Ok(Some(id as i32))
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn warm(&self) {
+        let searcher = self.reader.searcher();
+        let fields_to_warm = [
+            self.fields.title,
+            self.fields.title_ngram,
+            self.fields.isbns,
+            self.fields.publishers,
+        ];
+        for segment_reader in searcher.segment_readers() {
+            for field in &fields_to_warm {
+                if let Ok(idx) = segment_reader.inverted_index(*field) {
+                    let _ = idx.terms().num_terms();
+                }
+            }
         }
     }
 

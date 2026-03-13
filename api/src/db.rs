@@ -328,12 +328,19 @@ pub struct WorkCover {
 pub async fn get_work_covers(pool: &PgPool, after_work_id: i32, limit: i64) -> sqlx::Result<Vec<WorkCover>> {
     sqlx::query_as(
         r#"
-        SELECT DISTINCT ON (e.work_id) e.work_id, ec.cover_id
-        FROM editions e
-        JOIN edition_covers ec ON ec.edition_id = e.id
-        JOIN cover_metadata cm ON ec.cover_id = cm.id
-        WHERE e.work_id > $1
-        ORDER BY e.work_id, ec.position
+        SELECT w.id as work_id, cover.cover_id
+        FROM works w
+        CROSS JOIN LATERAL (
+            SELECT ec.cover_id
+            FROM editions e
+            JOIN edition_covers ec ON ec.edition_id = e.id
+            JOIN cover_metadata cm ON ec.cover_id = cm.id
+            WHERE e.work_id = w.id
+            ORDER BY ec.position
+            LIMIT 1
+        ) cover
+        WHERE w.id > $1
+        ORDER BY w.id
         LIMIT $2
         "#
     )

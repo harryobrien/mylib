@@ -152,6 +152,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
             if let Some(c) = w.cover_id {
                 doc.add_i64(search.works.fields.cover_id, c);
             }
+            doc.add_f64(search.works.fields.popularity, w.popularity_score.unwrap_or(0.0));
             writer.add_document(doc)?;
             last_id = w.id;
         }
@@ -191,6 +192,7 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
             if let Some(ref bio) = a.bio {
                 doc.add_text(search.authors.fields.bio, bio);
             }
+            doc.add_f64(search.authors.fields.popularity, a.popularity_score.unwrap_or(0.0));
             writer.add_document(doc)?;
             last_id = a.id;
         }
@@ -242,6 +244,7 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> a
             if let Some(c) = e.cover_id {
                 doc.add_i64(search.editions.fields.cover_id, c);
             }
+            doc.add_f64(search.editions.fields.popularity, e.popularity_score.unwrap_or(0.0));
             writer.add_document(doc)?;
             last_id = e.id;
         }

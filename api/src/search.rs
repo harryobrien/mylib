@@ -141,6 +141,7 @@ pub struct WorksFields {
     pub author_names_ngram: Field,
     pub first_publish_year: Field,
     pub cover_id: Field,
+    pub popularity: Field,
 }
 
 impl WorksIndex {
@@ -164,6 +165,7 @@ impl WorksIndex {
         let author_names_ngram = builder.add_text_field("author_names_ngram", raw_text);
         let first_publish_year = builder.add_i64_field("first_publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
+        let popularity = builder.add_f64_field("popularity", INDEXED | STORED | FAST);
 
         let fields = WorksFields {
             id,
@@ -177,6 +179,7 @@ impl WorksIndex {
             author_names_ngram,
             first_publish_year,
             cover_id,
+            popularity,
         };
         (builder.build(), fields)
     }
@@ -273,16 +276,22 @@ impl WorksIndex {
         ];
         let ngram_fields = vec![self.fields.title_ngram, self.fields.author_names_ngram];
         let query = build_search_query(query, &self.index, &fields, &ngram_fields);
-        let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
+        // Fetch extra candidates for re-ranking
+        let fetch_limit = (limit * 3).max(100);
+        let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch_limit))?;
 
-        let mut results = Vec::with_capacity(top_docs.len());
-        for (score, doc_address) in top_docs {
+        let mut candidates: Vec<(WorkHit, f64)> = Vec::with_capacity(top_docs.len());
+        for (text_score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             let id = doc
                 .get_first(self.fields.id)
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            results.push(WorkHit {
+            let popularity = doc
+                .get_first(self.fields.popularity)
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let hit = WorkHit {
                 id,
                 slug: base36::encode(id),
                 ol_key: doc
@@ -307,10 +316,20 @@ impl WorksIndex {
                     .get_first(self.fields.first_publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
-                score,
-            });
+                score: text_score,
+            };
+            candidates.push((hit, popularity));
         }
-        Ok(results)
+
+        // Re-rank: blend text relevance (0.7) with popularity boost (0.3)
+        // Popularity boost uses ln(1 + popularity) to dampen extreme values
+        candidates.sort_by(|a, b| {
+            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
+            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }
 }
 
@@ -343,6 +362,7 @@ pub struct AuthorsFields {
     pub name_ngram: Field,
     pub alternate_names: Field,
     pub bio: Field,
+    pub popularity: Field,
 }
 
 impl AuthorsIndex {
@@ -361,6 +381,7 @@ impl AuthorsIndex {
         let name_ngram = builder.add_text_field("name_ngram", raw_text);
         let alternate_names = builder.add_text_field("alternate_names", TEXT | STORED);
         let bio = builder.add_text_field("bio", TEXT);
+        let popularity = builder.add_f64_field("popularity", INDEXED | STORED | FAST);
 
         let fields = AuthorsFields {
             id,
@@ -369,6 +390,7 @@ impl AuthorsIndex {
             name_ngram,
             alternate_names,
             bio,
+            popularity,
         };
         (builder.build(), fields)
     }
@@ -441,16 +463,21 @@ impl AuthorsIndex {
         let fields = vec![self.fields.name, self.fields.alternate_names];
         let ngram_fields = vec![self.fields.name_ngram];
         let query = build_search_query(query, &self.index, &fields, &ngram_fields);
-        let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
+        let fetch_limit = (limit * 3).max(100);
+        let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch_limit))?;
 
-        let mut results = Vec::with_capacity(top_docs.len());
-        for (score, doc_address) in top_docs {
+        let mut candidates: Vec<(AuthorHit, f64)> = Vec::with_capacity(top_docs.len());
+        for (text_score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             let id = doc
                 .get_first(self.fields.id)
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            results.push(AuthorHit {
+            let popularity = doc
+                .get_first(self.fields.popularity)
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let hit = AuthorHit {
                 id,
                 slug: base36::encode(id),
                 ol_key: doc
@@ -467,10 +494,18 @@ impl AuthorsIndex {
                     .get_first(self.fields.alternate_names)
                     .and_then(|v| v.as_str())
                     .map(String::from),
-                score,
-            });
+                score: text_score,
+            };
+            candidates.push((hit, popularity));
         }
-        Ok(results)
+
+        candidates.sort_by(|a, b| {
+            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
+            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }
 }
 
@@ -505,6 +540,7 @@ pub struct EditionsFields {
     pub publishers: Field,
     pub publish_year: Field,
     pub cover_id: Field,
+    pub popularity: Field,
 }
 
 impl EditionsIndex {
@@ -528,6 +564,7 @@ impl EditionsIndex {
         let publishers = builder.add_text_field("publishers", TEXT | STORED);
         let publish_year = builder.add_i64_field("publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
+        let popularity = builder.add_f64_field("popularity", INDEXED | STORED | FAST);
 
         let fields = EditionsFields {
             id,
@@ -541,6 +578,7 @@ impl EditionsIndex {
             publishers,
             publish_year,
             cover_id,
+            popularity,
         };
         (builder.build(), fields)
     }
@@ -618,10 +656,11 @@ impl EditionsIndex {
         let fields = vec![self.fields.title, self.fields.isbns, self.fields.publishers];
         let ngram_fields = vec![self.fields.title_ngram];
         let query = build_search_query(query, &self.index, &fields, &ngram_fields);
-        let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
+        let fetch_limit = (limit * 3).max(100);
+        let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch_limit))?;
 
-        let mut results = Vec::with_capacity(top_docs.len());
-        for (score, doc_address) in top_docs {
+        let mut candidates: Vec<(EditionHit, f64)> = Vec::with_capacity(top_docs.len());
+        for (text_score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
             let id = doc
                 .get_first(self.fields.id)
@@ -631,7 +670,11 @@ impl EditionsIndex {
                 .get_first(self.fields.work_id)
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
-            results.push(EditionHit {
+            let popularity = doc
+                .get_first(self.fields.popularity)
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let hit = EditionHit {
                 id,
                 slug: base36::encode(id),
                 work_slug: base36::encode(work_id),
@@ -661,10 +704,18 @@ impl EditionsIndex {
                     .get_first(self.fields.publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
-                score,
-            });
+                score: text_score,
+            };
+            candidates.push((hit, popularity));
         }
-        Ok(results)
+
+        candidates.sort_by(|a, b| {
+            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
+            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }
 }
 

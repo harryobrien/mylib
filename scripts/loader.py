@@ -747,12 +747,144 @@ def refresh_materialized_views(conn):
 
 # --- Main ---
 
+def load_popularity(conn: psycopg.Connection, ratings_path: Path | None, reading_log_path: Path | None):
+    print("Loading popularity data...")
+
+    # Load key -> id mappings
+    with conn.cursor() as cur:
+        cur.execute("SELECT key, id FROM works")
+        work_map = dict(cur.fetchall())
+        cur.execute("SELECT key, id FROM editions")
+        edition_map = dict(cur.fetchall())
+    print(f"  Loaded {len(work_map):,} work and {len(edition_map):,} edition mappings")
+
+    # Aggregators: {id: {field: count}}
+    work_pop: dict[int, dict[str, int]] = {}
+    edition_pop: dict[int, dict[str, int]] = {}
+
+    def ensure_work(wid):
+        if wid not in work_pop:
+            work_pop[wid] = {"ratings_count": 0, "ratings_sum": 0, "want_to_read": 0,
+                            "currently_reading": 0, "already_read": 0, "did_not_finish": 0}
+
+    def ensure_edition(eid):
+        if eid not in edition_pop:
+            edition_pop[eid] = {"ratings_count": 0, "ratings_sum": 0, "want_to_read": 0,
+                               "currently_reading": 0, "already_read": 0, "did_not_finish": 0}
+
+    # Process ratings
+    if ratings_path:
+        print(f"  Processing ratings from {ratings_path}...")
+        opener = gzip.open if ratings_path.suffix == ".gz" else open
+        count = 0
+        with opener(ratings_path, "rt", encoding="utf-8") as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 3:
+                    continue
+                work_key, edition_key, rating_str = parts[0], parts[1], parts[2]
+                try:
+                    rating = int(rating_str)
+                    if rating < 1 or rating > 5:
+                        continue
+                except ValueError:
+                    continue
+
+                work_id = work_map.get(work_key)
+                edition_id = edition_map.get(edition_key) if edition_key else None
+
+                if work_id:
+                    ensure_work(work_id)
+                    work_pop[work_id]["ratings_count"] += 1
+                    work_pop[work_id]["ratings_sum"] += rating
+
+                if edition_id:
+                    ensure_edition(edition_id)
+                    edition_pop[edition_id]["ratings_count"] += 1
+                    edition_pop[edition_id]["ratings_sum"] += rating
+
+                count += 1
+                if count % 100000 == 0:
+                    print(f"    {count:,} ratings processed...", end="\r")
+        print(f"    {count:,} ratings processed")
+
+    # Process reading log
+    if reading_log_path:
+        print(f"  Processing reading log from {reading_log_path}...")
+        status_map = {
+            "Already Read": "already_read",
+            "Currently Reading": "currently_reading",
+            "Want to Read": "want_to_read",
+        }
+        opener = gzip.open if reading_log_path.suffix == ".gz" else open
+        count = 0
+        with opener(reading_log_path, "rt", encoding="utf-8") as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 3:
+                    continue
+                work_key, edition_key, status_raw = parts[0], parts[1], parts[2]
+                status = status_map.get(status_raw)
+                if not status:
+                    continue
+
+                work_id = work_map.get(work_key)
+                edition_id = edition_map.get(edition_key) if edition_key else None
+
+                if work_id:
+                    ensure_work(work_id)
+                    work_pop[work_id][status] += 1
+
+                if edition_id:
+                    ensure_edition(edition_id)
+                    edition_pop[edition_id][status] += 1
+
+                count += 1
+                if count % 100000 == 0:
+                    print(f"    {count:,} reading log entries processed...", end="\r")
+        print(f"    {count:,} reading log entries processed")
+
+    # Upsert into work_popularity
+    if work_pop:
+        print(f"  Upserting {len(work_pop):,} work popularity records...")
+        with conn.cursor() as cur:
+            with cur.copy("""
+                COPY work_popularity (work_id, ratings_count, ratings_sum, want_to_read,
+                                     currently_reading, already_read, did_not_finish)
+                FROM STDIN
+            """) as copy:
+                for wid, stats in work_pop.items():
+                    copy.write_row((wid, stats["ratings_count"], stats["ratings_sum"],
+                                   stats["want_to_read"], stats["currently_reading"],
+                                   stats["already_read"], stats["did_not_finish"]))
+        conn.commit()
+
+    # Upsert into edition_popularity
+    if edition_pop:
+        print(f"  Upserting {len(edition_pop):,} edition popularity records...")
+        with conn.cursor() as cur:
+            with cur.copy("""
+                COPY edition_popularity (edition_id, ratings_count, ratings_sum, want_to_read,
+                                        currently_reading, already_read, did_not_finish)
+                FROM STDIN
+            """) as copy:
+                for eid, stats in edition_pop.items():
+                    copy.write_row((eid, stats["ratings_count"], stats["ratings_sum"],
+                                   stats["want_to_read"], stats["currently_reading"],
+                                   stats["already_read"], stats["did_not_finish"]))
+        conn.commit()
+
+    print(f"  Done: {len(work_pop):,} works, {len(edition_pop):,} editions")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load Open Library dumps into PostgreSQL")
     parser.add_argument("--authors", type=Path, help="Path to authors dump file")
     parser.add_argument("--works", type=Path, help="Path to works dump file")
     parser.add_argument("--editions", type=Path, help="Path to editions dump file")
     parser.add_argument("--cover-metadata", type=Path, help="Path to covers metadata dump file")
+    parser.add_argument("--ratings", type=Path, help="Path to OL ratings dump file")
+    parser.add_argument("--reading-log", type=Path, help="Path to OL reading-log dump file")
     parser.add_argument("--skip-indexes", action="store_true", help="Don't drop/rebuild indexes")
     parser.add_argument("--rebuild-indexes", action="store_true", help="Only rebuild indexes")
     args = parser.parse_args()
@@ -766,7 +898,7 @@ def main():
         print("Done!")
         return
 
-    if not any([args.authors, args.works, args.editions, args.cover_metadata]):
+    if not any([args.authors, args.works, args.editions, args.cover_metadata, args.ratings, args.reading_log]):
         parser.print_help()
         sys.exit(1)
 
@@ -784,6 +916,8 @@ def main():
             load_editions(conn, args.editions)
         if args.cover_metadata:
             load_cover_metadata(conn, args.cover_metadata)
+        if args.ratings or args.reading_log:
+            load_popularity(conn, args.ratings, args.reading_log)
 
         if not args.skip_indexes:
             rebuild_indexes(conn)

@@ -210,6 +210,7 @@ pub struct WorkForIndex {
     pub subjects: Option<String>,
     pub author_names: Option<String>,
     pub cover_id: Option<i64>,
+    pub popularity_score: Option<f64>,
 }
 
 pub async fn get_works_for_indexing(
@@ -226,7 +227,10 @@ pub async fn get_works_for_indexing(
                 FROM work_authors wa
                 JOIN authors a ON wa.author_id = a.id
                 WHERE wa.work_id = w.id) as author_names,
-               NULL::bigint as cover_id
+               NULL::bigint as cover_id,
+               (SELECT compute_popularity_score(wp.ratings_count, wp.ratings_sum,
+                    wp.want_to_read, wp.currently_reading, wp.already_read)
+                FROM work_popularity wp WHERE wp.work_id = w.id)::float8 as popularity_score
         FROM works w
         WHERE w.id > $1
         ORDER BY w.id
@@ -246,6 +250,7 @@ pub struct AuthorForIndex {
     pub name: String,
     pub alternate_names: Option<String>,
     pub bio: Option<String>,
+    pub popularity_score: Option<f64>,
 }
 
 pub async fn get_authors_for_indexing(
@@ -258,7 +263,12 @@ pub async fn get_authors_for_indexing(
         SELECT a.id, a.key, a.name,
                (SELECT string_agg(DISTINCT aan.name, ' | ')
                 FROM author_alternate_names aan WHERE aan.author_id = a.id) as alternate_names,
-               a.bio
+               a.bio,
+               (SELECT SUM(compute_popularity_score(wp.ratings_count, wp.ratings_sum,
+                    wp.want_to_read, wp.currently_reading, wp.already_read))
+                FROM work_authors wa
+                JOIN work_popularity wp ON wp.work_id = wa.work_id
+                WHERE wa.author_id = a.id)::float8 as popularity_score
         FROM authors a
         WHERE a.id > $1
         ORDER BY a.id
@@ -283,6 +293,7 @@ pub struct EditionForIndex {
     pub publishers: Option<String>,
     pub publish_date: Option<String>,
     pub cover_id: Option<i64>,
+    pub popularity_score: Option<f64>,
 }
 
 pub async fn get_editions_for_indexing(
@@ -299,7 +310,10 @@ pub async fn get_editions_for_indexing(
                (SELECT string_agg(DISTINCT ep.publisher, ' | ')
                 FROM edition_publishers ep WHERE ep.edition_id = e.id) as publishers,
                e.publish_date,
-               NULL::bigint as cover_id
+               NULL::bigint as cover_id,
+               (SELECT compute_popularity_score(edp.ratings_count, edp.ratings_sum,
+                    edp.want_to_read, edp.currently_reading, edp.already_read)
+                FROM edition_popularity edp WHERE edp.edition_id = e.id)::float8 as popularity_score
         FROM editions e
         JOIN works w ON w.id = e.work_id
         WHERE e.id > $1

@@ -2,24 +2,28 @@ use crate::base36;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs,
-    query::{AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, RegexQuery, TermQuery},
+    query::{AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, TermQuery},
     schema::*,
+    tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer},
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term,
 };
 
-fn regex_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 2);
-    for c in s.chars() {
-        if "\\^$.|?*+()[]{}".contains(c) {
-            result.push('\\');
-        }
-        result.push(c);
-    }
-    result
+const NGRAM_TOKENIZER: &str = "edge_ngram";
+
+fn register_ngram_tokenizer(index: &Index) {
+    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(2, 8, true).unwrap())
+        .filter(LowerCaser)
+        .build();
+    index.tokenizers().register(NGRAM_TOKENIZER, tokenizer);
 }
 
-/// Build a search query: exact matches (boosted) + fuzzy + prefix on last term
-fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn Query> {
+/// Build a search query: exact matches (boosted) + fuzzy + ngram prefix on last term
+fn build_fuzzy_query(
+    query: &str,
+    fields: &[Field],
+    ngram_fields: &[Field],
+    _schema: &Schema,
+) -> Box<dyn Query> {
     let query_lower = query.to_lowercase();
     let terms: Vec<&str> = query_lower.split_whitespace().collect();
 
@@ -55,16 +59,28 @@ fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn
                         ));
                     }
 
-                    // Prefix matching for the last term (likely incomplete)
-                    if is_last && term.len() >= 2 {
-                        let pattern = format!("{}.*", regex_escape(term));
-                        if let Ok(regex_q) = RegexQuery::from_pattern(&pattern, *field) {
-                            queries.push((Occur::Should, Box::new(regex_q)));
-                        }
-                    }
-
                     queries
                 })
+                .chain(
+                    // For last term: also search ngram fields for prefix matching
+                    if is_last && term.len() >= 2 {
+                        ngram_fields
+                            .iter()
+                            .map(|field| {
+                                let tantivy_term = Term::from_field_text(*field, term);
+                                (
+                                    Occur::Should,
+                                    Box::new(BoostQuery::new(
+                                        Box::new(TermQuery::new(tantivy_term, IndexRecordOption::Basic)),
+                                        1.5,
+                                    )) as Box<dyn Query>,
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    },
+                )
                 .collect();
 
             let field_bool: Box<dyn Query> = Box::new(BooleanQuery::new(field_queries));
@@ -113,10 +129,12 @@ pub struct WorksFields {
     pub id: Field,
     pub key: Field,
     pub title: Field,
+    pub title_ngram: Field,
     pub subtitle: Field,
     pub description: Field,
     pub subjects: Field,
     pub author_names: Field,
+    pub author_names_ngram: Field,
     pub first_publish_year: Field,
     pub cover_id: Field,
 }
@@ -125,13 +143,21 @@ impl WorksIndex {
     fn build_schema() -> (Schema, WorksFields) {
         let mut builder = Schema::builder();
 
+        let ngram_options = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer(NGRAM_TOKENIZER)
+                .set_index_option(IndexRecordOption::Basic),
+        );
+
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let title = builder.add_text_field("title", TEXT | STORED);
+        let title_ngram = builder.add_text_field("title_ngram", ngram_options.clone());
         let subtitle = builder.add_text_field("subtitle", TEXT | STORED);
         let description = builder.add_text_field("description", TEXT);
         let subjects = builder.add_text_field("subjects", TEXT | STORED);
         let author_names = builder.add_text_field("author_names", TEXT | STORED);
+        let author_names_ngram = builder.add_text_field("author_names_ngram", ngram_options);
         let first_publish_year = builder.add_i64_field("first_publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
 
@@ -139,10 +165,12 @@ impl WorksIndex {
             id,
             key,
             title,
+            title_ngram,
             subtitle,
             description,
             subjects,
             author_names,
+            author_names_ngram,
             first_publish_year,
             cover_id,
         };
@@ -158,6 +186,8 @@ impl WorksIndex {
         } else {
             Index::create_in_dir(path, schema.clone())?
         };
+
+        register_ngram_tokenizer(&index);
 
         let reader = index
             .reader_builder()
@@ -219,7 +249,8 @@ impl WorksIndex {
             self.fields.author_names,
             self.fields.subjects,
         ];
-        let query = build_fuzzy_query(query, &fields, &self.schema);
+        let ngram_fields = vec![self.fields.title_ngram, self.fields.author_names_ngram];
+        let query = build_fuzzy_query(query, &fields, &ngram_fields, &self.schema);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
 
         let mut results = Vec::with_capacity(top_docs.len());
@@ -287,6 +318,7 @@ pub struct AuthorsFields {
     pub id: Field,
     pub key: Field,
     pub name: Field,
+    pub name_ngram: Field,
     pub alternate_names: Field,
     pub bio: Field,
 }
@@ -295,9 +327,16 @@ impl AuthorsIndex {
     fn build_schema() -> (Schema, AuthorsFields) {
         let mut builder = Schema::builder();
 
+        let ngram_options = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer(NGRAM_TOKENIZER)
+                .set_index_option(IndexRecordOption::Basic),
+        );
+
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let name = builder.add_text_field("name", TEXT | STORED);
+        let name_ngram = builder.add_text_field("name_ngram", ngram_options);
         let alternate_names = builder.add_text_field("alternate_names", TEXT | STORED);
         let bio = builder.add_text_field("bio", TEXT);
 
@@ -305,6 +344,7 @@ impl AuthorsIndex {
             id,
             key,
             name,
+            name_ngram,
             alternate_names,
             bio,
         };
@@ -320,6 +360,8 @@ impl AuthorsIndex {
         } else {
             Index::create_in_dir(path, schema.clone())?
         };
+
+        register_ngram_tokenizer(&index);
 
         let reader = index
             .reader_builder()
@@ -363,7 +405,8 @@ impl AuthorsIndex {
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<AuthorHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![self.fields.name, self.fields.alternate_names];
-        let query = build_fuzzy_query(query, &fields, &self.schema);
+        let ngram_fields = vec![self.fields.name_ngram];
+        let query = build_fuzzy_query(query, &fields, &ngram_fields, &self.schema);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
 
         let mut results = Vec::with_capacity(top_docs.len());
@@ -422,6 +465,7 @@ pub struct EditionsFields {
     pub work_id: Field,
     pub work_key: Field,
     pub title: Field,
+    pub title_ngram: Field,
     pub subtitle: Field,
     pub isbns: Field,
     pub publishers: Field,
@@ -433,11 +477,18 @@ impl EditionsIndex {
     fn build_schema() -> (Schema, EditionsFields) {
         let mut builder = Schema::builder();
 
+        let ngram_options = TextOptions::default().set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer(NGRAM_TOKENIZER)
+                .set_index_option(IndexRecordOption::Basic),
+        );
+
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let work_id = builder.add_i64_field("work_id", STORED | INDEXED);
         let work_key = builder.add_text_field("work_key", STRING | STORED);
         let title = builder.add_text_field("title", TEXT | STORED);
+        let title_ngram = builder.add_text_field("title_ngram", ngram_options);
         let subtitle = builder.add_text_field("subtitle", TEXT | STORED);
         let isbns = builder.add_text_field("isbns", TEXT | STORED);
         let publishers = builder.add_text_field("publishers", TEXT | STORED);
@@ -450,6 +501,7 @@ impl EditionsIndex {
             work_id,
             work_key,
             title,
+            title_ngram,
             subtitle,
             isbns,
             publishers,
@@ -468,6 +520,8 @@ impl EditionsIndex {
         } else {
             Index::create_in_dir(path, schema.clone())?
         };
+
+        register_ngram_tokenizer(&index);
 
         let reader = index
             .reader_builder()
@@ -511,7 +565,8 @@ impl EditionsIndex {
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<EditionHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![self.fields.title, self.fields.isbns, self.fields.publishers];
-        let query = build_fuzzy_query(query, &fields, &self.schema);
+        let ngram_fields = vec![self.fields.title_ngram];
+        let query = build_fuzzy_query(query, &fields, &ngram_fields, &self.schema);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
 
         let mut results = Vec::with_capacity(top_docs.len());

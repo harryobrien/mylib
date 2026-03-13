@@ -31,11 +31,19 @@ async fn main() -> anyhow::Result<()> {
 
     let args: Vec<String> = std::env::args().collect();
     let backfill_covers = args.iter().any(|a| a == "--backfill-covers");
+    let rebuild_index = args.iter().any(|a| a == "--rebuild-index");
 
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://mylib:mylib@localhost:5432/mylib".into());
 
     let index_path = std::env::var("INDEX_PATH").unwrap_or_else(|_| "./index".into());
+
+    if rebuild_index {
+        tracing::info!("Deleting existing indexes for rebuild...");
+        std::fs::remove_dir_all(format!("{}/works", index_path)).ok();
+        std::fs::remove_dir_all(format!("{}/authors", index_path)).ok();
+        std::fs::remove_dir_all(format!("{}/editions", index_path)).ok();
+    }
 
     tracing::info!("Connecting to database...");
     let db = PgPoolOptions::new()

@@ -48,6 +48,8 @@ services:
         API_URL: http://api:3000
         PUBLIC_API_URL: ${PUBLIC_API_URL:-/api}
     container_name: mylib-web
+    environment:
+      API_URL: http://api:3000
     expose:
       - "4321"
     depends_on:

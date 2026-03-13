@@ -229,7 +229,7 @@ pub async fn get_works_for_indexing(
                 FROM work_authors wa
                 JOIN authors a ON wa.author_id = a.id
                 WHERE wa.work_id = w.id) as author_names,
-               NULL::bigint as cover_id,
+               wc.cover_id,
                (SELECT compute_popularity_score(wp.ratings_count, wp.ratings_sum,
                     wp.want_to_read, wp.currently_reading, wp.already_read)
                 FROM work_popularity wp WHERE wp.work_id = w.id)::float8 as popularity_score,
@@ -237,6 +237,14 @@ pub async fn get_works_for_indexing(
                (SELECT wp.ratings_sum::real / NULLIF(wp.ratings_count, 0)
                 FROM work_popularity wp WHERE wp.work_id = w.id)::float4 as rating_avg
         FROM works w
+        LEFT JOIN LATERAL (
+            SELECT ec.cover_id
+            FROM editions e
+            JOIN edition_covers ec ON ec.edition_id = e.id
+            WHERE e.work_id = w.id
+            ORDER BY ec.position
+            LIMIT 1
+        ) wc ON true
         WHERE w.id > $1
         ORDER BY w.id
         LIMIT $2
@@ -314,7 +322,7 @@ pub async fn get_editions_for_indexing(
                (SELECT string_agg(DISTINCT ep.publisher, ' | ')
                 FROM edition_publishers ep WHERE ep.edition_id = e.id) as publishers,
                e.publish_date,
-               NULL::bigint as cover_id,
+               ec.cover_id,
                (SELECT compute_popularity_score(edp.ratings_count, edp.ratings_sum,
                     edp.want_to_read, edp.currently_reading, edp.already_read)
                 FROM edition_popularity edp WHERE edp.edition_id = e.id)::float8 as popularity_score,
@@ -323,6 +331,9 @@ pub async fn get_editions_for_indexing(
                 FROM edition_popularity edp WHERE edp.edition_id = e.id)::float4 as rating_avg
         FROM editions e
         JOIN works w ON w.id = e.work_id
+        LEFT JOIN LATERAL (
+            SELECT cover_id FROM edition_covers WHERE edition_id = e.id ORDER BY position LIMIT 1
+        ) ec ON true
         WHERE e.id > $1
         ORDER BY e.id
         LIMIT $2
@@ -427,40 +438,4 @@ pub async fn count_editions(pool: &PgPool) -> sqlx::Result<i64> {
         .fetch_one(pool)
         .await?;
     Ok(count)
-}
-
-#[derive(Debug, sqlx::FromRow)]
-pub struct WorkCover {
-    pub work_id: i32,
-    pub cover_id: i64,
-}
-
-/// Get covers for works (for backfilling index)
-pub async fn get_work_covers(
-    pool: &PgPool,
-    after_work_id: i32,
-    limit: i64,
-) -> sqlx::Result<Vec<WorkCover>> {
-    sqlx::query_as(
-        r#"
-        SELECT w.id as work_id, cover.cover_id
-        FROM works w
-        CROSS JOIN LATERAL (
-            SELECT ec.cover_id
-            FROM editions e
-            JOIN edition_covers ec ON ec.edition_id = e.id
-            JOIN cover_metadata cm ON ec.cover_id = cm.id
-            WHERE e.work_id = w.id
-            ORDER BY ec.position
-            LIMIT 1
-        ) cover
-        WHERE w.id > $1
-        ORDER BY w.id
-        LIMIT $2
-        "#,
-    )
-    .bind(after_work_id)
-    .bind(limit)
-    .fetch_all(pool)
-    .await
 }

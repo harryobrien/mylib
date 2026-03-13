@@ -30,7 +30,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
-    let backfill_covers = args.iter().any(|a| a == "--backfill-covers");
     let rebuild_index = args.iter().any(|a| a == "--rebuild-index");
 
     let database_url = std::env::var("DATABASE_URL")
@@ -64,13 +63,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Warming search indexes...");
     search.warm();
     tracing::info!("Search indexes warmed");
-
-    if backfill_covers {
-        tracing::info!("Backfilling covers...");
-        indexer::backfill_covers(&db, &search).await?;
-        tracing::info!("Cover backfill complete");
-        return Ok(());
-    }
 
     let state = Arc::new(AppState {
         db: db.clone(),

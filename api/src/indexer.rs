@@ -3,7 +3,6 @@ use crate::{
     search::{generate_edge_ngrams, SearchIndex},
 };
 use sqlx::PgPool;
-use tantivy::schema::Value;
 
 pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
     let (db_works, db_authors, db_editions) = tokio::join!(
@@ -152,7 +151,10 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
             if let Some(c) = w.cover_id {
                 doc.add_i64(search.works.fields.cover_id, c);
             }
-            doc.add_f64(search.works.fields.popularity, w.popularity_score.unwrap_or(0.0));
+            doc.add_f64(
+                search.works.fields.popularity,
+                w.popularity_score.unwrap_or(0.0),
+            );
             if let Some(rc) = w.ratings_count {
                 doc.add_i64(search.works.fields.ratings_count, rc as i64);
             }
@@ -198,7 +200,10 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
             if let Some(ref bio) = a.bio {
                 doc.add_text(search.authors.fields.bio, bio);
             }
-            doc.add_f64(search.authors.fields.popularity, a.popularity_score.unwrap_or(0.0));
+            doc.add_f64(
+                search.authors.fields.popularity,
+                a.popularity_score.unwrap_or(0.0),
+            );
             writer.add_document(doc)?;
             last_id = a.id;
         }
@@ -250,7 +255,10 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> a
             if let Some(c) = e.cover_id {
                 doc.add_i64(search.editions.fields.cover_id, c);
             }
-            doc.add_f64(search.editions.fields.popularity, e.popularity_score.unwrap_or(0.0));
+            doc.add_f64(
+                search.editions.fields.popularity,
+                e.popularity_score.unwrap_or(0.0),
+            );
             if let Some(rc) = e.ratings_count {
                 doc.add_i64(search.editions.fields.ratings_count, rc as i64);
             }
@@ -275,85 +283,4 @@ fn extract_year(date: &Option<String>) -> Option<i64> {
             .find(|s| s.len() == 4)
             .and_then(|y| y.parse().ok())
     })
-}
-
-/// Backfill cover_id into existing work index.
-/// Reads existing docs from Tantivy, queries DB for covers only, then re-adds with cover_id.
-#[allow(dead_code)]
-pub async fn backfill_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
-    backfill_work_covers(pool, search).await
-}
-
-#[allow(dead_code)]
-async fn backfill_work_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
-    use tantivy::Term;
-
-    const BATCH_SIZE: i64 = 10000;
-    tracing::info!("Backfilling work covers...");
-
-    let mut writer = search.works.writer()?;
-    let mut last_work_id = 0i32;
-    let mut updated = 0u64;
-
-    loop {
-        let covers = db::get_work_covers(pool, last_work_id, BATCH_SIZE).await?;
-        if covers.is_empty() {
-            break;
-        }
-
-        for wc in &covers {
-            if let Some(doc) = search.works.get_by_id(wc.work_id)? {
-                let term = Term::from_field_i64(search.works.fields.id, wc.work_id as i64);
-                writer.delete_term(term);
-
-                let mut new_doc = tantivy::TantivyDocument::new();
-                new_doc.add_i64(search.works.fields.id, wc.work_id as i64);
-                new_doc.add_i64(search.works.fields.cover_id, wc.cover_id);
-
-                if let Some(v) = doc.get_first(search.works.fields.key) {
-                    new_doc.add_field_value(search.works.fields.key, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.works.fields.title) {
-                    new_doc.add_field_value(search.works.fields.title, v.clone());
-                    if let Some(s) = v.as_str() {
-                        new_doc.add_text(
-                            search.works.fields.title_ngram,
-                            &generate_edge_ngrams(s, 2, 8),
-                        );
-                    }
-                }
-                if let Some(v) = doc.get_first(search.works.fields.subtitle) {
-                    new_doc.add_field_value(search.works.fields.subtitle, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.works.fields.description) {
-                    new_doc.add_field_value(search.works.fields.description, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.works.fields.subjects) {
-                    new_doc.add_field_value(search.works.fields.subjects, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.works.fields.author_names) {
-                    new_doc.add_field_value(search.works.fields.author_names, v.clone());
-                    if let Some(s) = v.as_str() {
-                        new_doc.add_text(
-                            search.works.fields.author_names_ngram,
-                            &generate_edge_ngrams(s, 2, 8),
-                        );
-                    }
-                }
-                if let Some(v) = doc.get_first(search.works.fields.first_publish_year) {
-                    new_doc.add_field_value(search.works.fields.first_publish_year, v.clone());
-                }
-
-                writer.add_document(new_doc)?;
-                updated += 1;
-            }
-            last_work_id = wc.work_id;
-        }
-
-        tracing::info!("  Work covers: {updated} updated");
-    }
-
-    writer.commit()?;
-    tracing::info!("Work covers backfill complete: {updated} updated");
-    Ok(())
 }

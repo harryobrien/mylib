@@ -276,8 +276,7 @@ pub struct EditionForIndex {
 pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
     sqlx::query_as(
         r#"
-        SELECT e.id, e.key, e.work_id,
-               (SELECT w.key FROM works w WHERE w.id = e.work_id) as work_key,
+        SELECT e.id, e.key, e.work_id, w.key as work_key,
                e.title, e.subtitle,
                (SELECT string_agg(DISTINCT ei.isbn, ' ')
                 FROM edition_isbns ei WHERE ei.edition_id = e.id) as isbns,
@@ -286,6 +285,7 @@ pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64)
                e.publish_date,
                NULL::bigint as cover_id
         FROM editions e
+        JOIN works w ON w.id = e.work_id
         WHERE e.id > $1
         ORDER BY e.id
         LIMIT $2

@@ -1,36 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useStore } from '@nanostores/react';
+import { $user, $userLoading, loadUser, clearUser } from '../stores/user';
+import { invalidateUserEditions } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
-interface User {
-  id: number;
-  email: string;
-  email_verified: boolean;
-}
-
 export default function AccountButton() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const user = useStore($user);
+  const loading = useStore($userLoading);
 
   useEffect(() => {
-    checkAuth();
+    loadUser(API_BASE);
   }, []);
-
-  async function checkAuth() {
-    try {
-      const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.user) {
-          setUser(data.user);
-        }
-      }
-    } catch {
-      // Not logged in
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleLogout(e: React.MouseEvent) {
     e.preventDefault();
@@ -38,7 +19,8 @@ export default function AccountButton() {
       method: 'POST',
       credentials: 'include',
     });
-    setUser(null);
+    clearUser();
+    invalidateUserEditions();
   }
 
   if (loading) {

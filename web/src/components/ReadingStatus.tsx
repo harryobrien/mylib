@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
+import { $user, $userLoading } from '../stores/user';
 import { $userEditions, loadUserEditions, invalidateUserEditions } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
@@ -11,12 +12,16 @@ interface Props {
 type Status = 'reading' | 'want_to_read' | 'finished' | 'did_not_finish' | null;
 
 export default function ReadingStatus({ slug }: Props) {
+  const user = useStore($user);
+  const userLoading = useStore($userLoading);
   const editions = useStore($userEditions);
   const [status, setStatus] = useState<Status>(null);
 
   useEffect(() => {
-    loadUserEditions(API_BASE);
-  }, []);
+    if (user) {
+      loadUserEditions(API_BASE);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (editions) {
@@ -45,7 +50,7 @@ export default function ReadingStatus({ slug }: Props) {
   }
 
   // Not logged in or still loading
-  if (editions === null) {
+  if (userLoading || !user) {
     return null;
   }
 

@@ -5,17 +5,17 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use chrono::{Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{base36, AppState};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -24,6 +24,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/auth/logout", post(logout))
         .route("/auth/me", get(me))
         .route("/auth/verify-email", get(verify_email))
+        .route("/auth/editions", get(list_user_editions))
+        .route("/auth/editions/{slug}", put(set_edition_status))
+        .route("/auth/editions/{slug}", delete(remove_edition))
 }
 
 fn generate_token() -> String {
@@ -299,6 +302,134 @@ async fn verify_email(
         StatusCode::FOUND,
         [(axum::http::header::LOCATION, redirect_url)],
     ))
+}
+
+// Helper to get user_id from session
+async fn get_user_id(state: &AppState, headers: &HeaderMap) -> Result<i32, AuthError> {
+    let session_token = extract_session_token(headers).ok_or(AuthError::Unauthorized)?;
+
+    let user_id = sqlx::query_scalar::<_, i32>(
+        "SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW()",
+    )
+    .bind(&session_token)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AuthError::Unauthorized)?;
+
+    Ok(user_id)
+}
+
+#[derive(Deserialize)]
+pub struct SetEditionStatusRequest {
+    status: String,
+}
+
+#[derive(Serialize)]
+pub struct EditionStatusResponse {
+    slug: String,
+    edition_id: i32,
+    title: String,
+    status: String,
+}
+
+async fn set_edition_status(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Json(req): Json<SetEditionStatusRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    if !["reading", "want_to_read", "finished", "did_not_finish"].contains(&req.status.as_str()) {
+        return Err(AuthError::InvalidToken);
+    }
+
+    // Verify edition exists
+    let exists = sqlx::query_scalar::<_, i32>("SELECT id FROM editions WHERE id = $1")
+        .bind(edition_id)
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+
+    if !exists {
+        return Err(AuthError::InvalidToken);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_editions (user_id, edition_id, status)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, edition_id) DO UPDATE SET status = $3, created_at = NOW()
+        "#,
+    )
+    .bind(user_id)
+    .bind(edition_id)
+    .bind(&req.status)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "status": req.status
+    })))
+}
+
+async fn remove_edition(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    sqlx::query("DELETE FROM user_editions WHERE user_id = $1 AND edition_id = $2")
+        .bind(user_id)
+        .bind(edition_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn list_user_editions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    let editions = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>)>(
+        r#"
+        SELECT e.id, e.title, ue.status, e.work_id, ec.cover_id
+        FROM user_editions ue
+        JOIN editions e ON ue.edition_id = e.id
+        LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
+        WHERE ue.user_id = $1
+        ORDER BY ue.created_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let editions: Vec<_> = editions
+        .into_iter()
+        .map(|(id, title, status, work_id, cover_id)| {
+            serde_json::json!({
+                "slug": base36::encode(id as i64),
+                "edition_id": id,
+                "work_slug": base36::encode(work_id as i64),
+                "title": title,
+                "status": status,
+                "cover_id": cover_id
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "editions": editions
+    })))
 }
 
 fn extract_session_token(headers: &HeaderMap) -> Option<String> {

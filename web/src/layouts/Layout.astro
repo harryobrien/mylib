@@ -116,6 +116,80 @@ const { title, showPortal = false } = Astro.props;
       border-color: #a65d57;
     }
     h2 { font-weight: 500; font-size: 1.2em; margin: 20px 0 10px; }
+
+    /* Account */
+    .account-text { font-size: 14px; color: #5a5549; }
+    .account-link { font-size: 14px; color: #5a5549; text-decoration: underline; text-underline-offset: 2px; }
+    .account-sep { color: #a9a49a; }
+
+    /* Reading status buttons */
+    .status-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
+    .status-btn {
+      font-size: 11px;
+      padding: 2px 6px;
+      border: 1px solid #d9d4c8;
+      background: #faf6ed;
+      color: #8a8477;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .status-btn:hover { border-color: #5a5549; }
+    .status-btn-active {
+      border-color: #5a5549;
+      background: #5a5549;
+      color: #fff;
+    }
+    .status-btn-dnf {
+      border-color: #a65d57;
+      background: #a65d57;
+      color: #fff;
+    }
+
+    /* Reading shelves */
+    .shelves { margin-top: 30px; }
+    .shelf { margin-bottom: 25px; }
+    .shelf-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #5a5549;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .shelf-books {
+      display: flex;
+      gap: 15px;
+      overflow-x: auto;
+      padding-bottom: 10px;
+    }
+    .shelf-book {
+      flex-shrink: 0;
+      width: 80px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .shelf-book:hover .shelf-book-title { color: #5a5549; }
+    .shelf-cover {
+      width: 80px;
+      height: 120px;
+      object-fit: cover;
+      background: #e8e4d9;
+      display: block;
+    }
+    .shelf-cover-placeholder {
+      width: 80px;
+      height: 120px;
+      background: #e8e4d9;
+    }
+    .shelf-book-title {
+      font-size: 12px;
+      margin-top: 6px;
+      line-height: 1.3;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
   </style>
 </head>
 <body>
@@ -132,11 +206,13 @@ const { title, showPortal = false } = Astro.props;
     </div>
   </div>
   <script>
+    import { clearSearch } from '../stores/search';
+
     function setupLogo() {
       document.getElementById('logo')?.addEventListener('click', (e) => {
         if (window.location.pathname === '/') {
           e.preventDefault();
-          window.dispatchEvent(new CustomEvent('searchclear'));
+          clearSearch();
         }
       });
     }

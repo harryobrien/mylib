@@ -212,15 +212,15 @@ pub async fn get_works_for_indexing(pool: &PgPool, after_id: i32, limit: i64) ->
     sqlx::query_as(
         r#"
         SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
-               string_agg(DISTINCT ws.subject, ' | ') as subjects,
-               string_agg(DISTINCT a.name, ' | ') as author_names,
+               (SELECT string_agg(DISTINCT ws.subject, ' | ')
+                FROM work_subjects ws WHERE ws.work_id = w.id) as subjects,
+               (SELECT string_agg(DISTINCT a.name, ' | ')
+                FROM work_authors wa
+                JOIN authors a ON wa.author_id = a.id
+                WHERE wa.work_id = w.id) as author_names,
                NULL::bigint as cover_id
         FROM works w
-        LEFT JOIN work_subjects ws ON w.id = ws.work_id
-        LEFT JOIN work_authors wa ON w.id = wa.work_id
-        LEFT JOIN authors a ON wa.author_id = a.id
         WHERE w.id > $1
-        GROUP BY w.id
         ORDER BY w.id
         LIMIT $2
         "#
@@ -244,12 +244,11 @@ pub async fn get_authors_for_indexing(pool: &PgPool, after_id: i32, limit: i64) 
     sqlx::query_as(
         r#"
         SELECT a.id, a.key, a.name,
-               string_agg(DISTINCT aan.name, ' | ') as alternate_names,
+               (SELECT string_agg(DISTINCT aan.name, ' | ')
+                FROM author_alternate_names aan WHERE aan.author_id = a.id) as alternate_names,
                a.bio
         FROM authors a
-        LEFT JOIN author_alternate_names aan ON a.id = aan.author_id
         WHERE a.id > $1
-        GROUP BY a.id
         ORDER BY a.id
         LIMIT $2
         "#
@@ -277,17 +276,17 @@ pub struct EditionForIndex {
 pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64) -> sqlx::Result<Vec<EditionForIndex>> {
     sqlx::query_as(
         r#"
-        SELECT e.id, e.key, e.work_id, w.key as work_key, e.title, e.subtitle,
-               string_agg(DISTINCT ei.isbn, ' ') as isbns,
-               string_agg(DISTINCT ep.publisher, ' | ') as publishers,
+        SELECT e.id, e.key, e.work_id,
+               (SELECT w.key FROM works w WHERE w.id = e.work_id) as work_key,
+               e.title, e.subtitle,
+               (SELECT string_agg(DISTINCT ei.isbn, ' ')
+                FROM edition_isbns ei WHERE ei.edition_id = e.id) as isbns,
+               (SELECT string_agg(DISTINCT ep.publisher, ' | ')
+                FROM edition_publishers ep WHERE ep.edition_id = e.id) as publishers,
                e.publish_date,
                NULL::bigint as cover_id
         FROM editions e
-        JOIN works w ON e.work_id = w.id
-        LEFT JOIN edition_isbns ei ON e.id = ei.edition_id
-        LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
         WHERE e.id > $1
-        GROUP BY e.id, w.key
         ORDER BY e.id
         LIMIT $2
         "#
@@ -339,30 +338,6 @@ pub async fn get_work_covers(pool: &PgPool, after_work_id: i32, limit: i64) -> s
         "#
     )
     .bind(after_work_id)
-    .bind(limit)
-    .fetch_all(pool)
-    .await
-}
-
-#[derive(Debug, sqlx::FromRow)]
-pub struct EditionCover {
-    pub edition_id: i32,
-    pub cover_id: i64,
-}
-
-/// Get covers for editions (for backfilling index)
-pub async fn get_edition_covers_for_indexing(pool: &PgPool, after_edition_id: i32, limit: i64) -> sqlx::Result<Vec<EditionCover>> {
-    sqlx::query_as(
-        r#"
-        SELECT DISTINCT ON (ec.edition_id) ec.edition_id, ec.cover_id
-        FROM edition_covers ec
-        JOIN cover_metadata cm ON ec.cover_id = cm.id
-        WHERE ec.edition_id > $1
-        ORDER BY ec.edition_id, ec.position
-        LIMIT $2
-        "#
-    )
-    .bind(after_edition_id)
     .bind(limit)
     .fetch_all(pool)
     .await

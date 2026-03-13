@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
+import { useStore } from '@nanostores/react';
+import { $searchQuery, $triggerSearch } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 const STORAGE_KEY = 'mylib_search';
@@ -124,25 +126,21 @@ export default function SearchBox() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const storeQuery = useStore($searchQuery);
+  const trigger = useStore($triggerSearch);
+
   useEffect(() => {
-    function handleSearchQuery(e: CustomEvent<string>): void {
-      const q = e.detail;
-      setQuery(q);
-      search(q);
+    if (trigger > 0) {
+      setQuery(storeQuery);
+      if (storeQuery) {
+        search(storeQuery);
+      } else {
+        setResults([]);
+        setStats('');
+        saveState('', [], '');
+      }
     }
-    function handleClear(): void {
-      setQuery('');
-      setResults([]);
-      setStats('');
-      saveState('', [], '');
-    }
-    window.addEventListener('searchquery', handleSearchQuery as EventListener);
-    window.addEventListener('searchclear', handleClear);
-    return () => {
-      window.removeEventListener('searchquery', handleSearchQuery as EventListener);
-      window.removeEventListener('searchclear', handleClear);
-    };
-  }, []);
+  }, [trigger]);
 
   useEffect(() => {
     if (query && results.length === 0) {
@@ -153,6 +151,7 @@ export default function SearchBox() {
   function saveState(q: string, r: TaggedResult[], s: string): void {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q, r, s }));
+      $searchQuery.set(q);
     } catch {}
   }
 

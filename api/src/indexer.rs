@@ -236,17 +236,11 @@ fn extract_year(date: &Option<String>) -> Option<i64> {
     })
 }
 
-/// Backfill cover_id into existing work/edition indexes.
+/// Backfill cover_id into existing work index.
 /// Reads existing docs from Tantivy, queries DB for covers only, then re-adds with cover_id.
 #[allow(dead_code)]
 pub async fn backfill_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
-    let (works_result, editions_result) = tokio::join!(
-        backfill_work_covers(pool, search),
-        backfill_edition_covers(pool, search),
-    );
-    works_result?;
-    editions_result?;
-    Ok(())
+    backfill_work_covers(pool, search).await
 }
 
 #[allow(dead_code)]
@@ -308,70 +302,5 @@ async fn backfill_work_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Re
 
     writer.commit()?;
     tracing::info!("Work covers backfill complete: {updated} updated");
-    Ok(())
-}
-
-#[allow(dead_code)]
-async fn backfill_edition_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
-    use tantivy::Term;
-
-    const BATCH_SIZE: i64 = 10000;
-    tracing::info!("Backfilling edition covers...");
-
-    let mut writer = search.editions.writer()?;
-    let mut last_edition_id = 0i32;
-    let mut updated = 0u64;
-
-    loop {
-        let covers = db::get_edition_covers_for_indexing(pool, last_edition_id, BATCH_SIZE).await?;
-        if covers.is_empty() {
-            break;
-        }
-
-        for ec in &covers {
-            if let Some(doc) = search.editions.get_by_id(ec.edition_id)? {
-                let term = Term::from_field_i64(search.editions.fields.id, ec.edition_id as i64);
-                writer.delete_term(term);
-
-                let mut new_doc = tantivy::TantivyDocument::new();
-                new_doc.add_i64(search.editions.fields.id, ec.edition_id as i64);
-                new_doc.add_i64(search.editions.fields.cover_id, ec.cover_id);
-
-                if let Some(v) = doc.get_first(search.editions.fields.key) {
-                    new_doc.add_field_value(search.editions.fields.key, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.work_id) {
-                    new_doc.add_field_value(search.editions.fields.work_id, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.work_key) {
-                    new_doc.add_field_value(search.editions.fields.work_key, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.title) {
-                    new_doc.add_field_value(search.editions.fields.title, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.subtitle) {
-                    new_doc.add_field_value(search.editions.fields.subtitle, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.isbns) {
-                    new_doc.add_field_value(search.editions.fields.isbns, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.publishers) {
-                    new_doc.add_field_value(search.editions.fields.publishers, v.clone());
-                }
-                if let Some(v) = doc.get_first(search.editions.fields.publish_year) {
-                    new_doc.add_field_value(search.editions.fields.publish_year, v.clone());
-                }
-
-                writer.add_document(new_doc)?;
-                updated += 1;
-            }
-            last_edition_id = ec.edition_id;
-        }
-
-        tracing::info!("  Edition covers: {updated} updated");
-    }
-
-    writer.commit()?;
-    tracing::info!("Edition covers backfill complete: {updated} updated");
     Ok(())
 }

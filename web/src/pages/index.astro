@@ -1,8 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import SearchBox from '../components/SearchBox.tsx';
+import ReadingShelves from '../components/ReadingShelves.tsx';
 ---
 
 <Layout title="mylib" showPortal>
   <SearchBox client:only="react" />
+  <ReadingShelves client:only="react" />
 </Layout>

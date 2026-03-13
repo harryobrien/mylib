@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import ReadingStatus from '../../components/ReadingStatus.tsx';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
 
 const res = await fetch(`${API_BASE}/works/${key}`);
@@ -81,7 +82,10 @@ function esc(str) {
               <div class="edition-cover-placeholder" />
             )}
             <div class="edition-info">
-              <div class="edition-title">{esc(e.title)}</div>
+              <div class="edition-title">
+                {esc(e.title)}
+                <ReadingStatus slug={e.slug} client:only="react" />
+              </div>
               <div class="edition-meta">
                 {e.publishers && <span>{esc(e.publishers)}</span>}
                 {e.publish_date && <span> · {e.publish_date}</span>}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || '/api';
+const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
 interface User {
   id: number;
@@ -42,40 +42,18 @@ export default function AccountButton() {
   }
 
   if (loading) {
-    return <span style={styles.text}>...</span>;
+    return <span className="account-text">...</span>;
   }
 
   if (!user) {
-    return (
-      <a href="/login" style={styles.link}>
-        Login
-      </a>
-    );
+    return <a href="/login" className="account-link">Login</a>;
   }
 
   return (
-    <span style={styles.text}>
+    <span className="account-text">
       {user.email}
-      <span style={styles.separator}> · </span>
-      <a href="#" onClick={handleLogout} style={styles.link}>
-        Logout
-      </a>
+      <span className="account-sep"> · </span>
+      <a href="#" onClick={handleLogout} className="account-link">Logout</a>
     </span>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  text: {
-    fontSize: '14px',
-    color: '#5a5549',
-  },
-  link: {
-    fontSize: '14px',
-    color: '#5a5549',
-    textDecoration: 'underline',
-    textUnderlineOffset: '2px',
-  },
-  separator: {
-    color: '#a9a49a',
-  },
-};

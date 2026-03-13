@@ -495,19 +495,6 @@ impl EditionsIndex {
         }
     }
 
-    /// Get a document by its ID, returning all stored fields
-    pub fn get_by_id(&self, id: i32) -> anyhow::Result<Option<TantivyDocument>> {
-        let searcher = self.reader.searcher();
-        let term = Term::from_field_i64(self.fields.id, id as i64);
-        let query = tantivy::query::TermQuery::new(term, tantivy::schema::IndexRecordOption::Basic);
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
-        if let Some((_score, doc_address)) = top_docs.first() {
-            Ok(Some(searcher.doc(*doc_address)?))
-        } else {
-            Ok(None)
-        }
-    }
-
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<EditionHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![self.fields.title, self.fields.isbns, self.fields.publishers];

@@ -2,12 +2,12 @@ use crate::base36;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs,
-    query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query, RegexQuery},
+    query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query},
     schema::*,
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term,
 };
 
-/// Build a search query: prefix match + fuzzy fallback
+/// Build a search query using fuzzy matching for typo tolerance
 fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn Query> {
     let query_lower = query.to_lowercase();
     let terms: Vec<&str> = query_lower.split_whitespace().collect();
@@ -21,22 +21,11 @@ fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn
         .map(|term| {
             let field_queries: Vec<(Occur, Box<dyn Query>)> = fields
                 .iter()
-                .flat_map(|field| {
-                    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
-
-                    // Prefix regex query (higher implicit score for exact prefix)
-                    let pattern = format!("{}.*", regex_escape(term));
-                    if let Ok(regex_q) = RegexQuery::from_pattern(&pattern, *field) {
-                        queries.push((Occur::Should, Box::new(regex_q)));
-                    }
-
-                    // Fuzzy query for typo tolerance
+                .map(|field| {
                     let tantivy_term = Term::from_field_text(*field, term);
                     let fuzzy: Box<dyn Query> =
                         Box::new(FuzzyTermQuery::new(tantivy_term, 1, true));
-                    queries.push((Occur::Should, fuzzy));
-
-                    queries
+                    (Occur::Should, fuzzy)
                 })
                 .collect();
 
@@ -46,20 +35,6 @@ fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn
         .collect();
 
     Box::new(BooleanQuery::new(term_queries))
-}
-
-fn regex_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 2);
-    for c in s.chars() {
-        match c {
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' => {
-                result.push('\\');
-                result.push(c);
-            }
-            _ => result.push(c),
-        }
-    }
-    result
 }
 
 pub struct SearchIndex {

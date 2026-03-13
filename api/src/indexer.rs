@@ -153,6 +153,12 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
                 doc.add_i64(search.works.fields.cover_id, c);
             }
             doc.add_f64(search.works.fields.popularity, w.popularity_score.unwrap_or(0.0));
+            if let Some(rc) = w.ratings_count {
+                doc.add_i64(search.works.fields.ratings_count, rc as i64);
+            }
+            if let Some(ra) = w.rating_avg {
+                doc.add_f64(search.works.fields.rating_avg, ra as f64);
+            }
             writer.add_document(doc)?;
             last_id = w.id;
         }
@@ -245,6 +251,12 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> a
                 doc.add_i64(search.editions.fields.cover_id, c);
             }
             doc.add_f64(search.editions.fields.popularity, e.popularity_score.unwrap_or(0.0));
+            if let Some(rc) = e.ratings_count {
+                doc.add_i64(search.editions.fields.ratings_count, rc as i64);
+            }
+            if let Some(ra) = e.rating_avg {
+                doc.add_f64(search.editions.fields.rating_avg, ra as f64);
+            }
             writer.add_document(doc)?;
             last_id = e.id;
         }

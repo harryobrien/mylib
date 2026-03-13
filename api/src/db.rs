@@ -211,6 +211,8 @@ pub struct WorkForIndex {
     pub author_names: Option<String>,
     pub cover_id: Option<i64>,
     pub popularity_score: Option<f64>,
+    pub ratings_count: Option<i32>,
+    pub rating_avg: Option<f32>,
 }
 
 pub async fn get_works_for_indexing(
@@ -230,7 +232,10 @@ pub async fn get_works_for_indexing(
                NULL::bigint as cover_id,
                (SELECT compute_popularity_score(wp.ratings_count, wp.ratings_sum,
                     wp.want_to_read, wp.currently_reading, wp.already_read)
-                FROM work_popularity wp WHERE wp.work_id = w.id)::float8 as popularity_score
+                FROM work_popularity wp WHERE wp.work_id = w.id)::float8 as popularity_score,
+               (SELECT wp.ratings_count FROM work_popularity wp WHERE wp.work_id = w.id) as ratings_count,
+               (SELECT wp.ratings_sum::real / NULLIF(wp.ratings_count, 0)
+                FROM work_popularity wp WHERE wp.work_id = w.id)::float4 as rating_avg
         FROM works w
         WHERE w.id > $1
         ORDER BY w.id
@@ -294,6 +299,8 @@ pub struct EditionForIndex {
     pub publish_date: Option<String>,
     pub cover_id: Option<i64>,
     pub popularity_score: Option<f64>,
+    pub ratings_count: Option<i32>,
+    pub rating_avg: Option<f32>,
 }
 
 pub async fn get_editions_for_indexing(
@@ -313,7 +320,10 @@ pub async fn get_editions_for_indexing(
                NULL::bigint as cover_id,
                (SELECT compute_popularity_score(edp.ratings_count, edp.ratings_sum,
                     edp.want_to_read, edp.currently_reading, edp.already_read)
-                FROM edition_popularity edp WHERE edp.edition_id = e.id)::float8 as popularity_score
+                FROM edition_popularity edp WHERE edp.edition_id = e.id)::float8 as popularity_score,
+               (SELECT edp.ratings_count FROM edition_popularity edp WHERE edp.edition_id = e.id) as ratings_count,
+               (SELECT edp.ratings_sum::real / NULLIF(edp.ratings_count, 0)
+                FROM edition_popularity edp WHERE edp.edition_id = e.id)::float4 as rating_avg
         FROM editions e
         JOIN works w ON w.id = e.work_id
         WHERE e.id > $1

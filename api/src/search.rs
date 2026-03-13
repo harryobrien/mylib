@@ -142,6 +142,8 @@ pub struct WorksFields {
     pub first_publish_year: Field,
     pub cover_id: Field,
     pub popularity: Field,
+    pub ratings_count: Field,
+    pub rating_avg: Field,
 }
 
 impl WorksIndex {
@@ -166,6 +168,8 @@ impl WorksIndex {
         let first_publish_year = builder.add_i64_field("first_publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
         let popularity = builder.add_f64_field("popularity", INDEXED | STORED | FAST);
+        let ratings_count = builder.add_i64_field("ratings_count", STORED);
+        let rating_avg = builder.add_f64_field("rating_avg", STORED);
 
         let fields = WorksFields {
             id,
@@ -180,6 +184,8 @@ impl WorksIndex {
             first_publish_year,
             cover_id,
             popularity,
+            ratings_count,
+            rating_avg,
         };
         (builder.build(), fields)
     }
@@ -316,6 +322,8 @@ impl WorksIndex {
                     .get_first(self.fields.first_publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
+                ratings_count: doc.get_first(self.fields.ratings_count).and_then(|v| v.as_i64()),
+                rating_avg: doc.get_first(self.fields.rating_avg).and_then(|v| v.as_f64()),
                 score: text_score,
             };
             candidates.push((hit, popularity));
@@ -343,6 +351,8 @@ pub struct WorkHit {
     pub author_names: Option<String>,
     pub first_publish_year: Option<i64>,
     pub cover_id: Option<i64>,
+    pub ratings_count: Option<i64>,
+    pub rating_avg: Option<f64>,
     pub score: f32,
 }
 
@@ -541,6 +551,8 @@ pub struct EditionsFields {
     pub publish_year: Field,
     pub cover_id: Field,
     pub popularity: Field,
+    pub ratings_count: Field,
+    pub rating_avg: Field,
 }
 
 impl EditionsIndex {
@@ -565,6 +577,8 @@ impl EditionsIndex {
         let publish_year = builder.add_i64_field("publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
         let popularity = builder.add_f64_field("popularity", INDEXED | STORED | FAST);
+        let ratings_count = builder.add_i64_field("ratings_count", STORED);
+        let rating_avg = builder.add_f64_field("rating_avg", STORED);
 
         let fields = EditionsFields {
             id,
@@ -579,6 +593,8 @@ impl EditionsIndex {
             publish_year,
             cover_id,
             popularity,
+            ratings_count,
+            rating_avg,
         };
         (builder.build(), fields)
     }
@@ -704,6 +720,8 @@ impl EditionsIndex {
                     .get_first(self.fields.publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
+                ratings_count: doc.get_first(self.fields.ratings_count).and_then(|v| v.as_i64()),
+                rating_avg: doc.get_first(self.fields.rating_avg).and_then(|v| v.as_f64()),
                 score: text_score,
             };
             candidates.push((hit, popularity));
@@ -731,5 +749,7 @@ pub struct EditionHit {
     pub publishers: Option<String>,
     pub publish_year: Option<i64>,
     pub cover_id: Option<i64>,
+    pub ratings_count: Option<i64>,
+    pub rating_avg: Option<f64>,
     pub score: f32,
 }

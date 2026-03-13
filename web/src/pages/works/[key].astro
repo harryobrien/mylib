@@ -13,6 +13,11 @@ const { authors, editions, ...work } = await res.json();
 
 // Find first edition with a cover for the main image
 const mainCoverId = editions.find(e => e.cover_id)?.cover_id;
+const ogImage = mainCoverId ? `https://covers.openlibrary.org/b/id/${mainCoverId}-L.jpg` : undefined;
+const authorList = authors.map(a => a.name).join(', ');
+const ogDescription = work.description
+  ? work.description.slice(0, 200) + (work.description.length > 200 ? '...' : '')
+  : authorList ? `By ${authorList}` : undefined;
 
 // Cache for 1 hour, stale-while-revalidate for 1 day
 Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
@@ -23,7 +28,7 @@ function esc(str) {
 }
 ---
 
-<Layout title={work.title} showPortal>
+<Layout title={work.title} description={ogDescription} image={ogImage} type="book" showPortal>
   <div class="work-header">
     {mainCoverId && (
       <img

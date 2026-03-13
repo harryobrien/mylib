@@ -5,10 +5,16 @@ import AccountButton from '../components/AccountButton.tsx';
 
 interface Props {
   title: string;
+  description?: string;
+  image?: string;
+  type?: 'website' | 'book' | 'profile';
   showPortal?: boolean;
 }
 
-const { title, showPortal = false } = Astro.props;
+const { title, description, image, type = 'website', showPortal = false } = Astro.props;
+const siteUrl = import.meta.env.SITE_URL || 'https://mylib.co';
+const canonicalUrl = new URL(Astro.url.pathname, siteUrl).href;
+const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
 ---
 
 <!DOCTYPE html>
@@ -17,6 +23,21 @@ const { title, showPortal = false } = Astro.props;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
+  <meta name="description" content={description || 'Curate your own library'}>
+  <link rel="canonical" href={canonicalUrl}>
+
+  <meta property="og:type" content={type}>
+  <meta property="og:url" content={canonicalUrl}>
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description || 'Curate your own library'}>
+  <meta property="og:image" content={ogImage}>
+  <meta property="og:site_name" content="mylib">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content={title}>
+  <meta name="twitter:description" content={description || 'Curate your own library'}>
+  <meta name="twitter:image" content={ogImage}>
+
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">

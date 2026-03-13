@@ -21,13 +21,17 @@ try {
 // Cache for 1 hour, stale-while-revalidate for 1 day
 Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
 
+const ogDescription = author.bio
+  ? author.bio.slice(0, 200) + (author.bio.length > 200 ? '...' : '')
+  : `Author of ${works.length} works`;
+
 function esc(str) {
   if (!str) return '';
   return str.replace(/[\uFE20\uFE21]/g, '');
 }
 ---
 
-<Layout title={author.name} showPortal>
+<Layout title={author.name} description={ogDescription} type="profile" showPortal>
   <h2 class="page-title">{esc(author.name)}</h2>
   {author.fuller_name && author.fuller_name !== author.name && (
     <p class="fuller-name">{esc(author.fuller_name)}</p>

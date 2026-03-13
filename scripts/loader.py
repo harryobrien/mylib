@@ -850,7 +850,6 @@ def load_popularity(conn: psycopg.Connection, ratings_path: Path | None, reading
                 already_read = EXCLUDED.already_read
         """)
         work_count = cur.rowcount
-    conn.commit()
     print(f"    {work_count:,} work records")
 
     # Aggregate and insert into edition_popularity

@@ -5,10 +5,10 @@ mod indexer;
 mod routes;
 mod search;
 
+use axum::http::{header, Method};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
-use axum::http::{header, Method};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -68,9 +68,18 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    indexer::build_missing_indexes(&db, &search).await?;
+    let state = Arc::new(AppState {
+        db: db.clone(),
+        search,
+    });
 
-    let state = Arc::new(AppState { db, search });
+    let bg_db = db;
+    let bg_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = indexer::build_missing_indexes(&bg_db, &bg_state.search).await {
+            tracing::error!("Background indexing failed: {e}");
+        }
+    });
 
     let cors_origins = std::env::var("CORS_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:4321".into())
@@ -80,7 +89,13 @@ async fn main() -> anyhow::Result<()> {
 
     let cors = CorsLayer::new()
         .allow_origin(cors_origins)
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::CONTENT_TYPE, header::COOKIE])
         .allow_credentials(true);
 

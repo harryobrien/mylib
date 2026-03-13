@@ -2,11 +2,14 @@ FROM rust:1.93 AS builder
 
 WORKDIR /app
 
-# Copy workspace files
 COPY Cargo.toml Cargo.lock ./
-COPY api ./api
+COPY api/Cargo.toml ./api/
 
-RUN cargo build --release --package mylib-api
+RUN mkdir -p api/src && echo "fn main() {}" > api/src/main.rs
+RUN cargo build --release --package mylib-api && rm -rf api/src
+
+COPY api ./api
+RUN touch api/src/main.rs && cargo build --release --package mylib-api
 
 FROM debian:bookworm-slim
 

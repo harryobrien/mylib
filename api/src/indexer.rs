@@ -1,5 +1,6 @@
-use crate::{db, search::SearchIndex};
+use crate::{db, search::{generate_edge_ngrams, SearchIndex}};
 use sqlx::PgPool;
+use tantivy::schema::Value;
 
 pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
     let (db_works, db_authors, db_editions) = tokio::join!(
@@ -116,7 +117,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
             doc.add_i64(search.works.fields.id, w.id as i64);
             doc.add_text(search.works.fields.key, &w.key);
             doc.add_text(search.works.fields.title, &w.title);
-            doc.add_text(search.works.fields.title_ngram, &w.title);
+            doc.add_text(search.works.fields.title_ngram, &generate_edge_ngrams(&w.title, 2, 8));
             if let Some(ref s) = w.subtitle {
                 doc.add_text(search.works.fields.subtitle, s);
             }
@@ -128,7 +129,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
             }
             if let Some(ref a) = w.author_names {
                 doc.add_text(search.works.fields.author_names, a);
-                doc.add_text(search.works.fields.author_names_ngram, a);
+                doc.add_text(search.works.fields.author_names_ngram, &generate_edge_ngrams(a, 2, 8));
             }
             if let Some(y) = year {
                 doc.add_i64(search.works.fields.first_publish_year, y);
@@ -165,7 +166,7 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
             doc.add_i64(search.authors.fields.id, a.id as i64);
             doc.add_text(search.authors.fields.key, &a.key);
             doc.add_text(search.authors.fields.name, &a.name);
-            doc.add_text(search.authors.fields.name_ngram, &a.name);
+            doc.add_text(search.authors.fields.name_ngram, &generate_edge_ngrams(&a.name, 2, 8));
             if let Some(ref alt) = a.alternate_names {
                 doc.add_text(search.authors.fields.alternate_names, alt);
             }
@@ -204,7 +205,7 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> a
             doc.add_i64(search.editions.fields.work_id, e.work_id as i64);
             doc.add_text(search.editions.fields.work_key, &e.work_key);
             doc.add_text(search.editions.fields.title, &e.title);
-            doc.add_text(search.editions.fields.title_ngram, &e.title);
+            doc.add_text(search.editions.fields.title_ngram, &generate_edge_ngrams(&e.title, 2, 8));
             if let Some(ref s) = e.subtitle {
                 doc.add_text(search.editions.fields.subtitle, s);
             }
@@ -278,7 +279,9 @@ async fn backfill_work_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Re
                 }
                 if let Some(v) = doc.get_first(search.works.fields.title) {
                     new_doc.add_field_value(search.works.fields.title, v.clone());
-                    new_doc.add_field_value(search.works.fields.title_ngram, v.clone());
+                    if let Some(s) = v.as_str() {
+                        new_doc.add_text(search.works.fields.title_ngram, &generate_edge_ngrams(s, 2, 8));
+                    }
                 }
                 if let Some(v) = doc.get_first(search.works.fields.subtitle) {
                     new_doc.add_field_value(search.works.fields.subtitle, v.clone());
@@ -291,7 +294,9 @@ async fn backfill_work_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Re
                 }
                 if let Some(v) = doc.get_first(search.works.fields.author_names) {
                     new_doc.add_field_value(search.works.fields.author_names, v.clone());
-                    new_doc.add_field_value(search.works.fields.author_names_ngram, v.clone());
+                    if let Some(s) = v.as_str() {
+                        new_doc.add_text(search.works.fields.author_names_ngram, &generate_edge_ngrams(s, 2, 8));
+                    }
                 }
                 if let Some(v) = doc.get_first(search.works.fields.first_publish_year) {
                     new_doc.add_field_value(search.works.fields.first_publish_year, v.clone());

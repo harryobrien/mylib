@@ -4,17 +4,20 @@ use tantivy::{
     collector::TopDocs,
     query::{AllQuery, BooleanQuery, BoostQuery, FuzzyTermQuery, Occur, Query, TermQuery},
     schema::*,
-    tokenizer::{LowerCaser, NgramTokenizer, TextAnalyzer},
     Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term,
 };
 
-const NGRAM_TOKENIZER: &str = "edge_ngram";
-
-fn register_ngram_tokenizer(index: &Index) {
-    let tokenizer = TextAnalyzer::builder(NgramTokenizer::new(2, 8, true).unwrap())
-        .filter(LowerCaser)
-        .build();
-    index.tokenizers().register(NGRAM_TOKENIZER, tokenizer);
+/// Generate edge ngrams for each word in text.
+/// "Virginia Woolf" -> "vi vir virg virgi virgin virgini virginia wo woo wool woolf"
+pub fn generate_edge_ngrams(text: &str, min: usize, max: usize) -> String {
+    text.split_whitespace()
+        .flat_map(|word| {
+            let word_lower = word.to_lowercase();
+            let chars: Vec<char> = word_lower.chars().collect();
+            (min..=max.min(chars.len())).map(move |n| chars[..n].iter().collect::<String>())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Build a search query: exact matches (boosted) + fuzzy + ngram prefix on last term
@@ -143,21 +146,15 @@ impl WorksIndex {
     fn build_schema() -> (Schema, WorksFields) {
         let mut builder = Schema::builder();
 
-        let ngram_options = TextOptions::default().set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer(NGRAM_TOKENIZER)
-                .set_index_option(IndexRecordOption::Basic),
-        );
-
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let title = builder.add_text_field("title", TEXT | STORED);
-        let title_ngram = builder.add_text_field("title_ngram", ngram_options.clone());
+        let title_ngram = builder.add_text_field("title_ngram", TEXT);
         let subtitle = builder.add_text_field("subtitle", TEXT | STORED);
         let description = builder.add_text_field("description", TEXT);
         let subjects = builder.add_text_field("subjects", TEXT | STORED);
         let author_names = builder.add_text_field("author_names", TEXT | STORED);
-        let author_names_ngram = builder.add_text_field("author_names_ngram", ngram_options);
+        let author_names_ngram = builder.add_text_field("author_names_ngram", TEXT);
         let first_publish_year = builder.add_i64_field("first_publish_year", INDEXED | STORED);
         let cover_id = builder.add_i64_field("cover_id", STORED);
 
@@ -187,8 +184,7 @@ impl WorksIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        register_ngram_tokenizer(&index);
-
+        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -327,16 +323,10 @@ impl AuthorsIndex {
     fn build_schema() -> (Schema, AuthorsFields) {
         let mut builder = Schema::builder();
 
-        let ngram_options = TextOptions::default().set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer(NGRAM_TOKENIZER)
-                .set_index_option(IndexRecordOption::Basic),
-        );
-
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let name = builder.add_text_field("name", TEXT | STORED);
-        let name_ngram = builder.add_text_field("name_ngram", ngram_options);
+        let name_ngram = builder.add_text_field("name_ngram", TEXT);
         let alternate_names = builder.add_text_field("alternate_names", TEXT | STORED);
         let bio = builder.add_text_field("bio", TEXT);
 
@@ -361,8 +351,7 @@ impl AuthorsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        register_ngram_tokenizer(&index);
-
+        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
@@ -477,18 +466,12 @@ impl EditionsIndex {
     fn build_schema() -> (Schema, EditionsFields) {
         let mut builder = Schema::builder();
 
-        let ngram_options = TextOptions::default().set_indexing_options(
-            TextFieldIndexing::default()
-                .set_tokenizer(NGRAM_TOKENIZER)
-                .set_index_option(IndexRecordOption::Basic),
-        );
-
         let id = builder.add_i64_field("id", STORED | INDEXED);
         let key = builder.add_text_field("key", STRING | STORED);
         let work_id = builder.add_i64_field("work_id", STORED | INDEXED);
         let work_key = builder.add_text_field("work_key", STRING | STORED);
         let title = builder.add_text_field("title", TEXT | STORED);
-        let title_ngram = builder.add_text_field("title_ngram", ngram_options);
+        let title_ngram = builder.add_text_field("title_ngram", TEXT);
         let subtitle = builder.add_text_field("subtitle", TEXT | STORED);
         let isbns = builder.add_text_field("isbns", TEXT | STORED);
         let publishers = builder.add_text_field("publishers", TEXT | STORED);
@@ -521,8 +504,7 @@ impl EditionsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        register_ngram_tokenizer(&index);
-
+        
         let reader = index
             .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)

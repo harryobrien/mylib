@@ -29,6 +29,9 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let args: Vec<String> = std::env::args().collect();
+    let backfill_covers = args.iter().any(|a| a == "--backfill-covers");
+
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://mylib:mylib@localhost:5432/mylib".into());
 
@@ -43,18 +46,21 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Loading search index from {index_path}...");
     let search = search::SearchIndex::open_or_create(&index_path)?;
 
-    if search.is_empty() {
-        tracing::info!("Search index is empty, building...");
-        indexer::build_indexes(&db, &search).await?;
-        tracing::info!("Search index built successfully");
-    } else {
-        tracing::info!(
-            "Search index loaded: {} works, {} authors, {} editions",
-            search.works.doc_count(),
-            search.authors.doc_count(),
-            search.editions.doc_count()
-        );
+    tracing::info!(
+        "Search index loaded: {} works, {} authors, {} editions",
+        search.works.doc_count(),
+        search.authors.doc_count(),
+        search.editions.doc_count()
+    );
+
+    if backfill_covers {
+        tracing::info!("Backfilling covers...");
+        indexer::backfill_covers(&db, &search).await?;
+        tracing::info!("Cover backfill complete");
+        return Ok(());
     }
+
+    indexer::build_missing_indexes(&db, &search).await?;
 
     let state = Arc::new(AppState { db, search });
 

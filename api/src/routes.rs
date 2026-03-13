@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{base36, db, indexer, search, AppState};
+use crate::{base36, db, search, AppState};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -24,8 +24,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/authors/{slug}", get(get_author))
         .route("/authors/{slug}/works", get(get_author_works))
         .route("/editions/{slug}", get(get_edition))
-        // Admin endpoints
-        .route("/admin/reindex", get(reindex))
         .route("/health", get(health))
 }
 
@@ -236,25 +234,6 @@ async fn get_edition(
     );
 
     Ok(Json(EditionResponse { edition, isbns: isbns?, covers: covers? }))
-}
-
-#[derive(Serialize)]
-pub struct ReindexResponse {
-    works: i64,
-    authors: i64,
-    editions: i64,
-}
-
-async fn reindex(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<ReindexResponse>, AppError> {
-    indexer::build_indexes(&state.db, &state.search).await?;
-
-    Ok(Json(ReindexResponse {
-        works: state.search.works.doc_count() as i64,
-        authors: state.search.authors.doc_count() as i64,
-        editions: state.search.editions.doc_count() as i64,
-    }))
 }
 
 async fn health() -> &'static str {

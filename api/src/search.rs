@@ -2,10 +2,9 @@ use crate::base36;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs,
-    query::{BooleanQuery, FuzzyTermQuery, Occur, Query, RegexQuery},
+    query::{AllQuery, BooleanQuery, FuzzyTermQuery, Occur, Query, RegexQuery},
     schema::*,
-    Index, IndexReader, IndexWriter, ReloadPolicy,
-    Term,
+    Index, IndexReader, IndexWriter, Order, ReloadPolicy, Term,
 };
 
 /// Build a search query: prefix match + fuzzy fallback
@@ -17,29 +16,34 @@ fn build_fuzzy_query(query: &str, fields: &[Field], _schema: &Schema) -> Box<dyn
         return Box::new(tantivy::query::EmptyQuery);
     }
 
-    let term_queries: Vec<(Occur, Box<dyn Query>)> = terms.iter().map(|term| {
-        let field_queries: Vec<(Occur, Box<dyn Query>)> = fields.iter().flat_map(|field| {
-            let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+    let term_queries: Vec<(Occur, Box<dyn Query>)> = terms
+        .iter()
+        .map(|term| {
+            let field_queries: Vec<(Occur, Box<dyn Query>)> = fields
+                .iter()
+                .flat_map(|field| {
+                    let mut queries: Vec<(Occur, Box<dyn Query>)> = Vec::new();
 
-            // Prefix regex query (higher implicit score for exact prefix)
-            let pattern = format!("{}.*", regex_escape(term));
-            if let Ok(regex_q) = RegexQuery::from_pattern(&pattern, *field) {
-                queries.push((Occur::Should, Box::new(regex_q)));
-            }
+                    // Prefix regex query (higher implicit score for exact prefix)
+                    let pattern = format!("{}.*", regex_escape(term));
+                    if let Ok(regex_q) = RegexQuery::from_pattern(&pattern, *field) {
+                        queries.push((Occur::Should, Box::new(regex_q)));
+                    }
 
-            // Fuzzy query for typo tolerance
-            let tantivy_term = Term::from_field_text(*field, term);
-            let fuzzy: Box<dyn Query> = Box::new(
-                FuzzyTermQuery::new(tantivy_term, 1, true)
-            );
-            queries.push((Occur::Should, fuzzy));
+                    // Fuzzy query for typo tolerance
+                    let tantivy_term = Term::from_field_text(*field, term);
+                    let fuzzy: Box<dyn Query> =
+                        Box::new(FuzzyTermQuery::new(tantivy_term, 1, true));
+                    queries.push((Occur::Should, fuzzy));
 
-            queries
-        }).collect();
+                    queries
+                })
+                .collect();
 
-        let field_bool: Box<dyn Query> = Box::new(BooleanQuery::new(field_queries));
-        (Occur::Must, field_bool)
-    }).collect();
+            let field_bool: Box<dyn Query> = Box::new(BooleanQuery::new(field_queries));
+            (Occur::Must, field_bool)
+        })
+        .collect();
 
     Box::new(BooleanQuery::new(term_queries))
 }
@@ -77,7 +81,9 @@ impl SearchIndex {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.works.doc_count() == 0 && self.authors.doc_count() == 0 && self.editions.doc_count() == 0
+        self.works.doc_count() == 0
+            && self.authors.doc_count() == 0
+            && self.editions.doc_count() == 0
     }
 }
 
@@ -117,7 +123,15 @@ impl WorksIndex {
         let cover_id = builder.add_i64_field("cover_id", STORED);
 
         let fields = WorksFields {
-            id, key, title, subtitle, description, subjects, author_names, first_publish_year, cover_id,
+            id,
+            key,
+            title,
+            subtitle,
+            description,
+            subjects,
+            author_names,
+            first_publish_year,
+            cover_id,
         };
         (builder.build(), fields)
     }
@@ -132,11 +146,17 @@ impl WorksIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        let reader = index.reader_builder()
+        let reader = index
+            .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()?;
 
-        Ok(Self { index, reader, schema, fields })
+        Ok(Self {
+            index,
+            reader,
+            schema,
+            fields,
+        })
     }
 
     pub fn writer(&self) -> anyhow::Result<IndexWriter> {
@@ -147,11 +167,44 @@ impl WorksIndex {
         self.reader.searcher().num_docs()
     }
 
+    pub fn max_id(&self) -> anyhow::Result<Option<i32>> {
+        let searcher = self.reader.searcher();
+        let top_docs = searcher.search(
+            &AllQuery,
+            &TopDocs::with_limit(1).order_by_fast_field::<i64>("id", Order::Desc),
+        )?;
+        if let Some((_score, doc_address)) = top_docs.first() {
+            let doc: TantivyDocument = searcher.doc(*doc_address)?;
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            Ok(Some(id as i32))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get a document by its ID, returning all stored fields
+    pub fn get_by_id(&self, id: i32) -> anyhow::Result<Option<TantivyDocument>> {
+        let searcher = self.reader.searcher();
+        let term = Term::from_field_i64(self.fields.id, id as i64);
+        let query = tantivy::query::TermQuery::new(term, tantivy::schema::IndexRecordOption::Basic);
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+        if let Some((_score, doc_address)) = top_docs.first() {
+            Ok(Some(searcher.doc(*doc_address)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<WorkHit>> {
         let searcher = self.reader.searcher();
         let fields = vec![
-            self.fields.title, self.fields.subtitle,
-            self.fields.author_names, self.fields.subjects
+            self.fields.title,
+            self.fields.subtitle,
+            self.fields.author_names,
+            self.fields.subjects,
         ];
         let query = build_fuzzy_query(query, &fields, &self.schema);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(limit))?;
@@ -159,15 +212,34 @@ impl WorksIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
-            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             results.push(WorkHit {
                 id,
                 slug: base36::encode(id),
-                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                title: doc.get_first(self.fields.title).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                subtitle: doc.get_first(self.fields.subtitle).and_then(|v| v.as_str()).map(String::from),
-                author_names: doc.get_first(self.fields.author_names).and_then(|v| v.as_str()).map(String::from),
-                first_publish_year: doc.get_first(self.fields.first_publish_year).and_then(|v| v.as_i64()),
+                ol_key: doc
+                    .get_first(self.fields.key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                title: doc
+                    .get_first(self.fields.title)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                subtitle: doc
+                    .get_first(self.fields.subtitle)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                author_names: doc
+                    .get_first(self.fields.author_names)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                first_publish_year: doc
+                    .get_first(self.fields.first_publish_year)
+                    .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
                 score,
             });
@@ -216,7 +288,13 @@ impl AuthorsIndex {
         let alternate_names = builder.add_text_field("alternate_names", TEXT | STORED);
         let bio = builder.add_text_field("bio", TEXT);
 
-        let fields = AuthorsFields { id, key, name, alternate_names, bio };
+        let fields = AuthorsFields {
+            id,
+            key,
+            name,
+            alternate_names,
+            bio,
+        };
         (builder.build(), fields)
     }
 
@@ -230,11 +308,17 @@ impl AuthorsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        let reader = index.reader_builder()
+        let reader = index
+            .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()?;
 
-        Ok(Self { index, reader, schema, fields })
+        Ok(Self {
+            index,
+            reader,
+            schema,
+            fields,
+        })
     }
 
     pub fn writer(&self) -> anyhow::Result<IndexWriter> {
@@ -243,6 +327,24 @@ impl AuthorsIndex {
 
     pub fn doc_count(&self) -> u64 {
         self.reader.searcher().num_docs()
+    }
+
+    pub fn max_id(&self) -> anyhow::Result<Option<i32>> {
+        let searcher = self.reader.searcher();
+        let top_docs = searcher.search(
+            &AllQuery,
+            &TopDocs::with_limit(1).order_by_fast_field::<i64>("id", Order::Desc),
+        )?;
+        if let Some((_score, doc_address)) = top_docs.first() {
+            let doc: TantivyDocument = searcher.doc(*doc_address)?;
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            Ok(Some(id as i32))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<AuthorHit>> {
@@ -254,13 +356,27 @@ impl AuthorsIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
-            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             results.push(AuthorHit {
                 id,
                 slug: base36::encode(id),
-                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                name: doc.get_first(self.fields.name).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                alternate_names: doc.get_first(self.fields.alternate_names).and_then(|v| v.as_str()).map(String::from),
+                ol_key: doc
+                    .get_first(self.fields.key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                name: doc
+                    .get_first(self.fields.name)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                alternate_names: doc
+                    .get_first(self.fields.alternate_names)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
                 score,
             });
         }
@@ -316,7 +432,16 @@ impl EditionsIndex {
         let cover_id = builder.add_i64_field("cover_id", STORED);
 
         let fields = EditionsFields {
-            id, key, work_id, work_key, title, subtitle, isbns, publishers, publish_year, cover_id,
+            id,
+            key,
+            work_id,
+            work_key,
+            title,
+            subtitle,
+            isbns,
+            publishers,
+            publish_year,
+            cover_id,
         };
         (builder.build(), fields)
     }
@@ -331,11 +456,17 @@ impl EditionsIndex {
             Index::create_in_dir(path, schema.clone())?
         };
 
-        let reader = index.reader_builder()
+        let reader = index
+            .reader_builder()
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()?;
 
-        Ok(Self { index, reader, schema, fields })
+        Ok(Self {
+            index,
+            reader,
+            schema,
+            fields,
+        })
     }
 
     pub fn writer(&self) -> anyhow::Result<IndexWriter> {
@@ -344,6 +475,37 @@ impl EditionsIndex {
 
     pub fn doc_count(&self) -> u64 {
         self.reader.searcher().num_docs()
+    }
+
+    pub fn max_id(&self) -> anyhow::Result<Option<i32>> {
+        let searcher = self.reader.searcher();
+        let top_docs = searcher.search(
+            &AllQuery,
+            &TopDocs::with_limit(1).order_by_fast_field::<i64>("id", Order::Desc),
+        )?;
+        if let Some((_score, doc_address)) = top_docs.first() {
+            let doc: TantivyDocument = searcher.doc(*doc_address)?;
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            Ok(Some(id as i32))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get a document by its ID, returning all stored fields
+    pub fn get_by_id(&self, id: i32) -> anyhow::Result<Option<TantivyDocument>> {
+        let searcher = self.reader.searcher();
+        let term = Term::from_field_i64(self.fields.id, id as i64);
+        let query = tantivy::query::TermQuery::new(term, tantivy::schema::IndexRecordOption::Basic);
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(1))?;
+        if let Some((_score, doc_address)) = top_docs.first() {
+            Ok(Some(searcher.doc(*doc_address)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<EditionHit>> {
@@ -355,18 +517,43 @@ impl EditionsIndex {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
-            let id = doc.get_first(self.fields.id).and_then(|v| v.as_i64()).unwrap_or(0);
-            let work_id = doc.get_first(self.fields.work_id).and_then(|v| v.as_i64()).unwrap_or(0);
+            let id = doc
+                .get_first(self.fields.id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let work_id = doc
+                .get_first(self.fields.work_id)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
             results.push(EditionHit {
                 id,
                 slug: base36::encode(id),
                 work_slug: base36::encode(work_id),
-                ol_key: doc.get_first(self.fields.key).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                title: doc.get_first(self.fields.title).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                subtitle: doc.get_first(self.fields.subtitle).and_then(|v| v.as_str()).map(String::from),
-                isbns: doc.get_first(self.fields.isbns).and_then(|v| v.as_str()).map(String::from),
-                publishers: doc.get_first(self.fields.publishers).and_then(|v| v.as_str()).map(String::from),
-                publish_year: doc.get_first(self.fields.publish_year).and_then(|v| v.as_i64()),
+                ol_key: doc
+                    .get_first(self.fields.key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                title: doc
+                    .get_first(self.fields.title)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                subtitle: doc
+                    .get_first(self.fields.subtitle)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                isbns: doc
+                    .get_first(self.fields.isbns)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                publishers: doc
+                    .get_first(self.fields.publishers)
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                publish_year: doc
+                    .get_first(self.fields.publish_year)
+                    .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
                 score,
             });

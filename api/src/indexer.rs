@@ -1,11 +1,91 @@
 use crate::{db, search::SearchIndex};
 use sqlx::PgPool;
 
-pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    let (db_works, db_authors, db_editions) = tokio::join!(
+        db::count_works(pool),
+        db::count_authors(pool),
+        db::count_editions(pool),
+    );
+    let db_works = db_works?;
+    let db_authors = db_authors?;
+    let db_editions = db_editions?;
+
+    let idx_works = search.works.doc_count() as i64;
+    let idx_authors = search.authors.doc_count() as i64;
+    let idx_editions = search.editions.doc_count() as i64;
+
+    let needs_works = idx_works < db_works;
+    let needs_authors = idx_authors < db_authors;
+    let needs_editions = idx_editions < db_editions;
+
+    if !needs_works && !needs_authors && !needs_editions {
+        return Ok(());
+    }
+
+    let works_start = if needs_works {
+        search.works.max_id()?.unwrap_or(0)
+    } else {
+        0
+    };
+    let authors_start = if needs_authors {
+        search.authors.max_id()?.unwrap_or(0)
+    } else {
+        0
+    };
+    let editions_start = if needs_editions {
+        search.editions.max_id()?.unwrap_or(0)
+    } else {
+        0
+    };
+
+    tracing::info!(
+        "Indexing: works={}/{} (from {}), authors={}/{} (from {}), editions={}/{} (from {})",
+        idx_works, db_works, works_start,
+        idx_authors, db_authors, authors_start,
+        idx_editions, db_editions, editions_start,
+    );
+
+    let works_fut = async {
+        if needs_works {
+            index_works(pool, search, works_start).await
+        } else {
+            Ok(())
+        }
+    };
+    let authors_fut = async {
+        if needs_authors {
+            index_authors(pool, search, authors_start).await
+        } else {
+            Ok(())
+        }
+    };
+    let editions_fut = async {
+        if needs_editions {
+            index_editions(pool, search, editions_start).await
+        } else {
+            Ok(())
+        }
+    };
+
+    let (works_result, authors_result, editions_result) =
+        tokio::join!(works_fut, authors_fut, editions_fut);
+
+    works_result?;
+    authors_result?;
+    editions_result?;
+
+    tracing::info!("Indexing complete");
+    Ok(())
+}
+
+pub async fn rebuild_all_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    tracing::info!("Rebuilding all indexes...");
+
     let (works_result, authors_result, editions_result) = tokio::join!(
-        index_works(pool, search),
-        index_authors(pool, search),
-        index_editions(pool, search),
+        index_works(pool, search, 0),
+        index_authors(pool, search, 0),
+        index_editions(pool, search, 0),
     );
 
     works_result?;
@@ -16,14 +96,14 @@ pub async fn build_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Resul
     Ok(())
 }
 
-async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
-    tracing::info!("Indexing works...");
+    tracing::info!("Indexing works from id {}...", start_id);
     let mut writer = search.works.writer()?;
     let total = db::count_works(pool).await?;
-    let mut last_id = 0i32;
-    let mut indexed = 0i64;
+    let mut last_id = start_id;
+    let mut indexed = search.works.doc_count() as i64;
 
     loop {
         let works = db::get_works_for_indexing(pool, last_id, BATCH_SIZE).await?;
@@ -64,14 +144,14 @@ async fn index_works(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn index_authors(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
-    tracing::info!("Indexing authors...");
+    tracing::info!("Indexing authors from id {}...", start_id);
     let mut writer = search.authors.writer()?;
     let total = db::count_authors(pool).await?;
-    let mut last_id = 0i32;
-    let mut indexed = 0i64;
+    let mut last_id = start_id;
+    let mut indexed = search.authors.doc_count() as i64;
 
     loop {
         let authors = db::get_authors_for_indexing(pool, last_id, BATCH_SIZE).await?;
@@ -99,14 +179,14 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()
     Ok(())
 }
 
-async fn index_editions(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
-    tracing::info!("Indexing editions...");
+    tracing::info!("Indexing editions from id {}...", start_id);
     let mut writer = search.editions.writer()?;
     let total = db::count_editions(pool).await?;
-    let mut last_id = 0i32;
-    let mut indexed = 0i64;
+    let mut last_id = start_id;
+    let mut indexed = search.editions.doc_count() as i64;
 
     loop {
         let editions = db::get_editions_for_indexing(pool, last_id, BATCH_SIZE).await?;
@@ -154,4 +234,144 @@ fn extract_year(date: &Option<String>) -> Option<i64> {
             .find(|s| s.len() == 4)
             .and_then(|y| y.parse().ok())
     })
+}
+
+/// Backfill cover_id into existing work/edition indexes.
+/// Reads existing docs from Tantivy, queries DB for covers only, then re-adds with cover_id.
+#[allow(dead_code)]
+pub async fn backfill_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    let (works_result, editions_result) = tokio::join!(
+        backfill_work_covers(pool, search),
+        backfill_edition_covers(pool, search),
+    );
+    works_result?;
+    editions_result?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn backfill_work_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    use tantivy::Term;
+
+    const BATCH_SIZE: i64 = 10000;
+    tracing::info!("Backfilling work covers...");
+
+    let mut writer = search.works.writer()?;
+    let mut last_work_id = 0i32;
+    let mut updated = 0u64;
+
+    loop {
+        let covers = db::get_work_covers(pool, last_work_id, BATCH_SIZE).await?;
+        if covers.is_empty() {
+            break;
+        }
+
+        for wc in &covers {
+            if let Some(doc) = search.works.get_by_id(wc.work_id)? {
+                let term = Term::from_field_i64(search.works.fields.id, wc.work_id as i64);
+                writer.delete_term(term);
+
+                let mut new_doc = tantivy::TantivyDocument::new();
+                new_doc.add_i64(search.works.fields.id, wc.work_id as i64);
+                new_doc.add_i64(search.works.fields.cover_id, wc.cover_id);
+
+                if let Some(v) = doc.get_first(search.works.fields.key) {
+                    new_doc.add_field_value(search.works.fields.key, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.title) {
+                    new_doc.add_field_value(search.works.fields.title, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.subtitle) {
+                    new_doc.add_field_value(search.works.fields.subtitle, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.description) {
+                    new_doc.add_field_value(search.works.fields.description, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.subjects) {
+                    new_doc.add_field_value(search.works.fields.subjects, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.author_names) {
+                    new_doc.add_field_value(search.works.fields.author_names, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.works.fields.first_publish_year) {
+                    new_doc.add_field_value(search.works.fields.first_publish_year, v.clone());
+                }
+
+                writer.add_document(new_doc)?;
+                updated += 1;
+            }
+            last_work_id = wc.work_id;
+        }
+
+        tracing::info!("  Work covers: {updated} updated");
+    }
+
+    writer.commit()?;
+    tracing::info!("Work covers backfill complete: {updated} updated");
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn backfill_edition_covers(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+    use tantivy::Term;
+
+    const BATCH_SIZE: i64 = 10000;
+    tracing::info!("Backfilling edition covers...");
+
+    let mut writer = search.editions.writer()?;
+    let mut last_edition_id = 0i32;
+    let mut updated = 0u64;
+
+    loop {
+        let covers = db::get_edition_covers_for_indexing(pool, last_edition_id, BATCH_SIZE).await?;
+        if covers.is_empty() {
+            break;
+        }
+
+        for ec in &covers {
+            if let Some(doc) = search.editions.get_by_id(ec.edition_id)? {
+                let term = Term::from_field_i64(search.editions.fields.id, ec.edition_id as i64);
+                writer.delete_term(term);
+
+                let mut new_doc = tantivy::TantivyDocument::new();
+                new_doc.add_i64(search.editions.fields.id, ec.edition_id as i64);
+                new_doc.add_i64(search.editions.fields.cover_id, ec.cover_id);
+
+                if let Some(v) = doc.get_first(search.editions.fields.key) {
+                    new_doc.add_field_value(search.editions.fields.key, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.work_id) {
+                    new_doc.add_field_value(search.editions.fields.work_id, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.work_key) {
+                    new_doc.add_field_value(search.editions.fields.work_key, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.title) {
+                    new_doc.add_field_value(search.editions.fields.title, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.subtitle) {
+                    new_doc.add_field_value(search.editions.fields.subtitle, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.isbns) {
+                    new_doc.add_field_value(search.editions.fields.isbns, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.publishers) {
+                    new_doc.add_field_value(search.editions.fields.publishers, v.clone());
+                }
+                if let Some(v) = doc.get_first(search.editions.fields.publish_year) {
+                    new_doc.add_field_value(search.editions.fields.publish_year, v.clone());
+                }
+
+                writer.add_document(new_doc)?;
+                updated += 1;
+            }
+            last_edition_id = ec.edition_id;
+        }
+
+        tracing::info!("  Edition covers: {updated} updated");
+    }
+
+    writer.commit()?;
+    tracing::info!("Edition covers backfill complete: {updated} updated");
+    Ok(())
 }

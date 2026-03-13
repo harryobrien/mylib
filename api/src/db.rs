@@ -214,11 +214,7 @@ pub async fn get_works_for_indexing(pool: &PgPool, after_id: i32, limit: i64) ->
         SELECT w.id, w.key, w.title, w.subtitle, w.description, w.first_publish_date,
                string_agg(DISTINCT ws.subject, ' | ') as subjects,
                string_agg(DISTINCT a.name, ' | ') as author_names,
-               (SELECT ec.cover_id FROM edition_covers ec
-                JOIN editions e ON ec.edition_id = e.id
-                JOIN cover_metadata cm ON ec.cover_id = cm.id
-                WHERE e.work_id = w.id
-                ORDER BY ec.position LIMIT 1) as cover_id
+               NULL::bigint as cover_id
         FROM works w
         LEFT JOIN work_subjects ws ON w.id = ws.work_id
         LEFT JOIN work_authors wa ON w.id = wa.work_id
@@ -285,10 +281,7 @@ pub async fn get_editions_for_indexing(pool: &PgPool, after_id: i32, limit: i64)
                string_agg(DISTINCT ei.isbn, ' ') as isbns,
                string_agg(DISTINCT ep.publisher, ' | ') as publishers,
                e.publish_date,
-               (SELECT ec.cover_id FROM edition_covers ec
-                JOIN cover_metadata cm ON ec.cover_id = cm.id
-                WHERE ec.edition_id = e.id
-                ORDER BY ec.position LIMIT 1) as cover_id
+               NULL::bigint as cover_id
         FROM editions e
         JOIN works w ON e.work_id = w.id
         LEFT JOIN edition_isbns ei ON e.id = ei.edition_id
@@ -324,4 +317,53 @@ pub async fn count_editions(pool: &PgPool) -> sqlx::Result<i64> {
         .fetch_one(pool)
         .await?;
     Ok(count)
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct WorkCover {
+    pub work_id: i32,
+    pub cover_id: i64,
+}
+
+/// Get covers for works (for backfilling index)
+pub async fn get_work_covers(pool: &PgPool, after_work_id: i32, limit: i64) -> sqlx::Result<Vec<WorkCover>> {
+    sqlx::query_as(
+        r#"
+        SELECT DISTINCT ON (e.work_id) e.work_id, ec.cover_id
+        FROM editions e
+        JOIN edition_covers ec ON ec.edition_id = e.id
+        JOIN cover_metadata cm ON ec.cover_id = cm.id
+        WHERE e.work_id > $1
+        ORDER BY e.work_id, ec.position
+        LIMIT $2
+        "#
+    )
+    .bind(after_work_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct EditionCover {
+    pub edition_id: i32,
+    pub cover_id: i64,
+}
+
+/// Get covers for editions (for backfilling index)
+pub async fn get_edition_covers_for_indexing(pool: &PgPool, after_edition_id: i32, limit: i64) -> sqlx::Result<Vec<EditionCover>> {
+    sqlx::query_as(
+        r#"
+        SELECT DISTINCT ON (ec.edition_id) ec.edition_id, ec.cover_id
+        FROM edition_covers ec
+        JOIN cover_metadata cm ON ec.cover_id = cm.id
+        WHERE ec.edition_id > $1
+        ORDER BY ec.edition_id, ec.position
+        LIMIT $2
+        "#
+    )
+    .bind(after_edition_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
 }

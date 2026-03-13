@@ -129,6 +129,8 @@ pub struct WorkResponse {
     work: db::Work,
     authors: Vec<AuthorSummary>,
     editions: Vec<EditionSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    popularity: Option<db::WorkPopularity>,
 }
 
 #[derive(Serialize)]
@@ -162,9 +164,10 @@ async fn get_work(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let (authors, editions) = tokio::join!(
+    let (authors, editions, popularity) = tokio::join!(
         db::get_work_authors(&state.db, work.id),
-        db::get_work_editions(&state.db, work.id)
+        db::get_work_editions(&state.db, work.id),
+        db::get_work_popularity(&state.db, work.id)
     );
 
     let authors = authors?
@@ -188,6 +191,7 @@ async fn get_work(
         work,
         authors,
         editions,
+        popularity: popularity?,
     }))
 }
 
@@ -247,6 +251,8 @@ pub struct EditionResponse {
     edition: db::Edition,
     isbns: Vec<String>,
     covers: Vec<db::CoverMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    popularity: Option<db::EditionPopularity>,
 }
 
 async fn get_edition(
@@ -259,15 +265,17 @@ async fn get_edition(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let (isbns, covers) = tokio::join!(
+    let (isbns, covers, popularity) = tokio::join!(
         db::get_edition_isbns(&state.db, edition.id),
-        db::get_edition_covers(&state.db, edition.id)
+        db::get_edition_covers(&state.db, edition.id),
+        db::get_edition_popularity(&state.db, edition.id)
     );
 
     Ok(Json(EditionResponse {
         edition,
         isbns: isbns?,
         covers: covers?,
+        popularity: popularity?,
     }))
 }
 

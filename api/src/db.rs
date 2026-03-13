@@ -337,6 +337,54 @@ pub async fn get_editions_for_indexing(
     .await
 }
 
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct WorkPopularity {
+    pub ratings_count: i32,
+    pub rating_avg: Option<f32>,
+    pub want_to_read: i32,
+    pub currently_reading: i32,
+    pub already_read: i32,
+}
+
+pub async fn get_work_popularity(pool: &PgPool, work_id: i32) -> sqlx::Result<Option<WorkPopularity>> {
+    sqlx::query_as(
+        r#"
+        SELECT ratings_count,
+               (ratings_sum::real / NULLIF(ratings_count, 0))::float4 as rating_avg,
+               want_to_read, currently_reading, already_read
+        FROM work_popularity
+        WHERE work_id = $1
+        "#,
+    )
+    .bind(work_id)
+    .fetch_optional(pool)
+    .await
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+pub struct EditionPopularity {
+    pub ratings_count: i32,
+    pub rating_avg: Option<f32>,
+    pub want_to_read: i32,
+    pub currently_reading: i32,
+    pub already_read: i32,
+}
+
+pub async fn get_edition_popularity(pool: &PgPool, edition_id: i32) -> sqlx::Result<Option<EditionPopularity>> {
+    sqlx::query_as(
+        r#"
+        SELECT ratings_count,
+               (ratings_sum::real / NULLIF(ratings_count, 0))::float4 as rating_avg,
+               want_to_read, currently_reading, already_read
+        FROM edition_popularity
+        WHERE edition_id = $1
+        "#,
+    )
+    .bind(edition_id)
+    .fetch_optional(pool)
+    .await
+}
+
 pub async fn count_works(pool: &PgPool) -> sqlx::Result<i64> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM works")
         .fetch_one(pool)

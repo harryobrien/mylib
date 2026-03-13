@@ -329,11 +329,10 @@ impl WorksIndex {
             candidates.push((hit, popularity));
         }
 
-        // Re-rank: blend text relevance (0.7) with popularity boost (0.3)
-        // Popularity boost uses ln(1 + popularity) to dampen extreme values
+        // Re-rank: blend text relevance with popularity boost
         candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
-            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
+            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
             score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -510,8 +509,8 @@ impl AuthorsIndex {
         }
 
         candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
-            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
+            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
             score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
@@ -728,8 +727,8 @@ impl EditionsIndex {
         }
 
         candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.7 + (1.0 + a.1).ln() * 0.3;
-            let score_b = (b.0.score as f64) * 0.7 + (1.0 + b.1).ln() * 0.3;
+            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
+            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
             score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 

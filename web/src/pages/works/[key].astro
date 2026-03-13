@@ -9,7 +9,7 @@ const res = await fetch(`${API_BASE}/works/${key}`);
 if (!res.ok) {
   return Astro.redirect('/404');
 }
-const { authors, editions, ...work } = await res.json();
+const { authors, editions, popularity, ...work } = await res.json();
 
 // Find first edition with a cover for the main image
 const mainCoverId = editions.find(e => e.cover_id)?.cover_id;
@@ -56,6 +56,21 @@ function esc(str) {
       {work.first_publish_date && (
         <p class="meta">First published: {work.first_publish_date}</p>
       )}
+
+      {popularity?.ratings_count > 0 && (
+        <div class="ratings">
+          <span class="rating-value">{popularity.rating_avg?.toFixed(2)}</span>
+          <span class="rating-count">({popularity.ratings_count.toLocaleString()} ratings)</span>
+        </div>
+      )}
+
+      {(popularity?.want_to_read > 0 || popularity?.currently_reading > 0 || popularity?.already_read > 0) && (
+        <div class="reading-stats">
+          {popularity.want_to_read > 0 && <span>{popularity.want_to_read.toLocaleString()} want to read</span>}
+          {popularity.currently_reading > 0 && <span>{popularity.currently_reading.toLocaleString()} reading</span>}
+          {popularity.already_read > 0 && <span>{popularity.already_read.toLocaleString()} read</span>}
+        </div>
+      )}
     </div>
   </div>
 
@@ -96,6 +111,9 @@ function esc(str) {
                 {e.publish_date && <span> · {e.publish_date}</span>}
                 {e.physical_format && <span> · {e.physical_format}</span>}
                 {e.number_of_pages && <span> · {e.number_of_pages} pages</span>}
+                {e.popularity?.ratings_count > 0 && (
+                  <span> · <span class="edition-rating">{e.popularity.rating_avg?.toFixed(1)}</span> ({e.popularity.ratings_count.toLocaleString()})</span>
+                )}
               </div>
             </div>
           </div>
@@ -141,6 +159,26 @@ function esc(str) {
     color: #8a8477;
     margin-bottom: 0;
   }
+  .ratings {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  .rating-value {
+    color: #b8860b;
+    font-weight: 500;
+    font-size: 1.1em;
+  }
+  .rating-count {
+    color: #8a8477;
+    margin-left: 4px;
+  }
+  .reading-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #8a8477;
+  }
   .description {
     margin-bottom: 30px;
     line-height: 1.6;
@@ -182,6 +220,10 @@ function esc(str) {
   .edition-meta {
     font-size: 13px;
     color: #8a8477;
+  }
+  .edition-rating {
+    color: #b8860b;
+    font-weight: 500;
   }
   .empty {
     color: #8a8477;

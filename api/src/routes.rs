@@ -145,6 +145,8 @@ pub struct EditionSummary {
     slug: String,
     #[serde(flatten)]
     edition: db::Edition,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    popularity: Option<db::EditionPopularity>,
 }
 
 #[derive(Serialize)]
@@ -164,10 +166,11 @@ async fn get_work(
         .await?
         .ok_or(AppError::NotFound)?;
 
-    let (authors, editions, popularity) = tokio::join!(
+    let (authors, editions, popularity, edition_pops) = tokio::join!(
         db::get_work_authors(&state.db, work.id),
         db::get_work_editions(&state.db, work.id),
-        db::get_work_popularity(&state.db, work.id)
+        db::get_work_popularity(&state.db, work.id),
+        db::get_edition_popularities_for_work(&state.db, work.id)
     );
 
     let authors = authors?
@@ -178,11 +181,26 @@ async fn get_work(
         })
         .collect();
 
+    let edition_pops: std::collections::HashMap<i32, db::EditionPopularity> = edition_pops?
+        .into_iter()
+        .map(|ep| (ep.edition_id, db::EditionPopularity {
+            ratings_count: ep.ratings_count,
+            rating_avg: ep.rating_avg,
+            want_to_read: ep.want_to_read,
+            currently_reading: ep.currently_reading,
+            already_read: ep.already_read,
+        }))
+        .collect();
+
     let editions = editions?
         .into_iter()
-        .map(|e| EditionSummary {
-            slug: base36::encode(e.id as i64),
-            edition: e,
+        .map(|e| {
+            let pop = edition_pops.get(&e.id).cloned();
+            EditionSummary {
+                slug: base36::encode(e.id as i64),
+                edition: e,
+                popularity: pop,
+            }
         })
         .collect();
 

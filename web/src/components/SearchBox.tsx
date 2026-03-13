@@ -16,6 +16,8 @@ interface WorkHit {
   author_names?: string;
   first_publish_year?: number;
   cover_id?: number;
+  ratings_count?: number;
+  rating_avg?: number;
   score: number;
 }
 
@@ -66,6 +68,8 @@ interface TaggedResult {
   publish_year?: number;
   isbns?: string;
   cover_id?: number;
+  ratings_count?: number;
+  rating_avg?: number;
 }
 
 interface SavedState {
@@ -277,6 +281,12 @@ export default function SearchBox() {
               {r._type === 'work' && r.author_names && (
                 <div className="result-authors">{esc(r.author_names)}</div>
               )}
+              {r._type === 'work' && r.ratings_count && r.ratings_count > 0 && (
+                <div className="result-rating">
+                  <span className="rating-stars">{r.rating_avg?.toFixed(1)}</span>
+                  <span className="rating-count">({r.ratings_count.toLocaleString()})</span>
+                </div>
+              )}
               {r._type === 'edition' && (
                 <div className="result-meta">
                   {r.publishers && <span>{esc(r.publishers)}</span>}
@@ -404,6 +414,18 @@ export default function SearchBox() {
           font-size: 12px;
           color: #8a8477;
           margin-top: 3px;
+        }
+        .result-rating {
+          font-size: 12px;
+          color: #8a8477;
+          margin-top: 3px;
+        }
+        .rating-stars {
+          color: #b8860b;
+          font-weight: 500;
+        }
+        .rating-count {
+          margin-left: 4px;
         }
         .empty {
           color: #8a8477;

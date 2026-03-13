@@ -235,7 +235,7 @@ export default function SearchBox() {
         )}
       </div>
 
-      <div className="stats">{stats}</div>
+      {(query || results.length > 0) && <div className="stats">{stats}</div>}
 
       <div className="results">
         {results.length === 0 && query && <div className="empty">No results</div>}

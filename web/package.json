@@ -16,8 +16,11 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@fontsource/alegreya-sans": "^5.2.8",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "satori": "^0.25.0",
     "typescript": "^5.9.3"
   }
 }

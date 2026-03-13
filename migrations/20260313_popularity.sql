@@ -1,3 +1,39 @@
+-- Author-level popularity (aggregated from their works)
+CREATE TABLE author_popularity (
+    author_id INTEGER PRIMARY KEY REFERENCES authors(id) ON DELETE CASCADE,
+    popularity_score REAL NOT NULL DEFAULT 0
+);
+
+-- Trigger: update author_popularity when work_popularity changes
+CREATE OR REPLACE FUNCTION update_author_popularity_on_work() RETURNS TRIGGER AS $$
+DECLARE
+    v_work_id INTEGER;
+    v_author_id INTEGER;
+BEGIN
+    v_work_id := COALESCE(NEW.work_id, OLD.work_id);
+
+    -- Update popularity for all authors of this work
+    FOR v_author_id IN SELECT author_id FROM work_authors WHERE work_id = v_work_id
+    LOOP
+        INSERT INTO author_popularity (author_id, popularity_score)
+        SELECT v_author_id,
+               COALESCE(SUM(compute_popularity_score(wp.ratings_count, wp.ratings_sum,
+                   wp.want_to_read, wp.currently_reading, wp.already_read)), 0)
+        FROM work_authors wa
+        JOIN work_popularity wp ON wp.work_id = wa.work_id
+        WHERE wa.author_id = v_author_id
+        ON CONFLICT (author_id) DO UPDATE SET
+            popularity_score = EXCLUDED.popularity_score;
+    END LOOP;
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_work_popularity_author
+AFTER INSERT OR UPDATE OR DELETE ON work_popularity
+FOR EACH ROW EXECUTE FUNCTION update_author_popularity_on_work();
+
 -- Work-level popularity (aggregated from all editions)
 CREATE TABLE work_popularity (
     work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,

@@ -269,12 +269,9 @@ pub async fn get_authors_for_indexing(
                (SELECT string_agg(DISTINCT aan.name, ' | ')
                 FROM author_alternate_names aan WHERE aan.author_id = a.id) as alternate_names,
                a.bio,
-               (SELECT SUM(compute_popularity_score(wp.ratings_count, wp.ratings_sum,
-                    wp.want_to_read, wp.currently_reading, wp.already_read))
-                FROM work_authors wa
-                JOIN work_popularity wp ON wp.work_id = wa.work_id
-                WHERE wa.author_id = a.id)::float8 as popularity_score
+               ap.popularity_score::float8 as popularity_score
         FROM authors a
+        LEFT JOIN author_popularity ap ON ap.author_id = a.id
         WHERE a.id > $1
         ORDER BY a.id
         LIMIT $2

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useStore } from '@nanostores/react';
+import { $userEditions, loadUserEditions, invalidateUserEditions } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -9,31 +11,19 @@ interface Props {
 type Status = 'reading' | 'want_to_read' | 'finished' | 'did_not_finish' | null;
 
 export default function ReadingStatus({ slug }: Props) {
+  const editions = useStore($userEditions);
   const [status, setStatus] = useState<Status>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkStatus();
+    loadUserEditions(API_BASE);
   }, []);
 
-  async function checkStatus() {
-    try {
-      const res = await fetch(`${API_BASE}/auth/editions`, { credentials: 'include' });
-      if (res.ok) {
-        setIsLoggedIn(true);
-        const data = await res.json();
-        const edition = data.editions?.find((e: any) => e.slug === slug);
-        if (edition) {
-          setStatus(edition.status);
-        }
-      }
-    } catch {
-      // Not logged in or error
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (editions) {
+      const edition = editions.find(e => e.slug === slug);
+      setStatus(edition?.status as Status || null);
     }
-  }
+  }, [editions, slug]);
 
   async function setEditionStatus(newStatus: Status) {
     if (!newStatus) {
@@ -41,7 +31,6 @@ export default function ReadingStatus({ slug }: Props) {
         method: 'DELETE',
         credentials: 'include',
       });
-      setStatus(null);
     } else {
       await fetch(`${API_BASE}/auth/editions/${slug}`, {
         method: 'PUT',
@@ -49,11 +38,14 @@ export default function ReadingStatus({ slug }: Props) {
         credentials: 'include',
         body: JSON.stringify({ status: newStatus }),
       });
-      setStatus(newStatus);
     }
+    setStatus(newStatus);
+    invalidateUserEditions();
+    loadUserEditions(API_BASE, true);
   }
 
-  if (loading || !isLoggedIn) {
+  // Not logged in or still loading
+  if (editions === null) {
     return null;
   }
 

@@ -53,12 +53,33 @@ const { title, showPortal = false } = Astro.props;
       align-items: center;
       gap: 15px;
       margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .header-top {
+      display: contents;
     }
     .header-right {
-      margin-left: auto;
-      align-self: stretch;
-      display: flex;
-      align-items: stretch;
+      order: 3;
+    }
+    .search-portal-container {
+      order: 2;
+    }
+    @media (max-width: 600px) {
+      .header-top {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 15px;
+      }
+      .header-right {
+        order: unset;
+        margin-left: auto;
+      }
+      .search-portal-container {
+        order: unset;
+        width: 100%;
+        margin-top: 5px;
+      }
     }
     header h1 {
       font-weight: 500;
@@ -195,11 +216,13 @@ const { title, showPortal = false } = Astro.props;
 <body>
   <div class="container">
     <header>
-      <h1><a href="/" id="logo"><em>my</em><u>lib</u></a></h1>
-      {showPortal && <SearchPortal client:only="react" />}
-      <div class="header-right">
-        <AccountButton client:only="react" />
+      <div class="header-top">
+        <h1><a href="/" id="logo"><em>my</em><u>lib</u></a></h1>
+        <div class="header-right">
+          <AccountButton client:only="react" />
+        </div>
       </div>
+      {showPortal && <SearchPortal client:only="react" />}
     </header>
     <div class="content">
       <slot />
@@ -209,11 +232,8 @@ const { title, showPortal = false } = Astro.props;
     import { clearSearch } from '../stores/search';
 
     function setupLogo() {
-      document.getElementById('logo')?.addEventListener('click', (e) => {
-        if (window.location.pathname === '/') {
-          e.preventDefault();
-          clearSearch();
-        }
+      document.getElementById('logo')?.addEventListener('click', () => {
+        clearSearch();
       });
     }
     setupLogo();

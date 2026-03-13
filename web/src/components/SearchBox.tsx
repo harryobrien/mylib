@@ -199,19 +199,41 @@ export default function SearchBox() {
   function handleInput(e: ChangeEvent<HTMLInputElement>): void {
     const value = e.target.value;
     setQuery(value);
+    $searchQuery.set(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(value), 80);
   }
 
+  function handleClear(): void {
+    setQuery('');
+    setResults([]);
+    setStats('');
+    saveState('', [], '');
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'Escape') {
+      handleClear();
+    }
+  }
+
   return (
     <div className="search-container">
-      <input
-        type="text"
-        value={query}
-        onChange={handleInput}
-        placeholder="Search books, authors, ISBNs..."
-        autoFocus
-      />
+      <div className="search-input-wrapper">
+        <input
+          type="text"
+          value={query}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="Search books, authors, ISBNs..."
+          autoFocus
+        />
+        {query && (
+          <button className="search-clear" onClick={handleClear} type="button">
+            &times;
+          </button>
+        )}
+      </div>
 
       <div className="stats">{stats}</div>
 
@@ -262,9 +284,14 @@ export default function SearchBox() {
       </div>
 
       <style>{`
+        .search-input-wrapper {
+          position: relative;
+          display: flex;
+        }
         .search-container input {
           width: 100%;
           padding: 14px 16px;
+          padding-right: 40px;
           font-size: 18px;
           border: 1px solid #000;
           background: #fffef9;
@@ -272,6 +299,20 @@ export default function SearchBox() {
           font-family: inherit;
         }
         .search-container input:focus { background: #fff; }
+        .search-clear {
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          font-size: 24px;
+          color: #8a8477;
+          cursor: pointer;
+          padding: 4px 8px;
+          line-height: 1;
+        }
+        .search-clear:hover { color: #5a5549; }
         .stats {
           font-size: 13px;
           color: #5a5549;
@@ -281,6 +322,8 @@ export default function SearchBox() {
         .results {
           border: 1px solid #000;
           background: #faf6ed;
+          max-height: calc(100vh - 220px);
+          overflow-y: auto;
         }
         .results:empty {
           display: none;

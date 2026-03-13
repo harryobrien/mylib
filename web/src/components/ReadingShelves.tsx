@@ -1,43 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { $searchQuery } from '../stores/search';
+import { $searchQuery, $userEditions, $userEditionsLoading, loadUserEditions, type Edition } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
-interface Edition {
-  slug: string;
-  work_slug: string;
-  title: string;
-  status: string;
-  cover_id: number | null;
-}
-
 export default function ReadingShelves() {
-  const [editions, setEditions] = useState<Edition[]>([]);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const editions = useStore($userEditions);
+  const loading = useStore($userEditionsLoading);
   const searchQuery = useStore($searchQuery);
 
   useEffect(() => {
-    loadEditions();
+    loadUserEditions(API_BASE);
   }, []);
 
-  async function loadEditions() {
-    try {
-      const res = await fetch(`${API_BASE}/auth/editions`, { credentials: 'include' });
-      if (res.ok) {
-        setIsLoggedIn(true);
-        const data = await res.json();
-        setEditions(data.editions || []);
-      }
-    } catch {
-      // Not logged in
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (loading || !isLoggedIn || editions.length === 0 || searchQuery) {
+  if (loading || editions === null || editions.length === 0 || searchQuery) {
     return null;
   }
 

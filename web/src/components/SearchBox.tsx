@@ -125,6 +125,8 @@ export default function SearchBox() {
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchVersionRef = useRef(0);
+  const displayedVersionRef = useRef(0);
 
   const storeQuery = useStore($searchQuery);
   const trigger = useStore($triggerSearch);
@@ -167,19 +169,26 @@ export default function SearchBox() {
 
   async function search(q: string): Promise<void> {
     if (!q.trim()) {
+      searchVersionRef.current++;
+      displayedVersionRef.current = searchVersionRef.current;
       setResults([]);
       setStats('');
       saveState('', [], '');
       return;
     }
 
+    const version = ++searchVersionRef.current;
     const start = performance.now();
     try {
       const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=10`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: SearchResponse = await res.json();
-      const elapsed = (performance.now() - start).toFixed(0);
 
+      // Ignore if a newer search has already been displayed
+      if (version < displayedVersionRef.current) return;
+      displayedVersionRef.current = version;
+
+      const elapsed = (performance.now() - start).toFixed(0);
       const combined: TaggedResult[] = [
         ...data.works.map(w => ({ ...w, _type: 'work' as const, _score: 0 })),
         ...data.authors.map(a => ({ ...a, title: a.name, _type: 'author' as const, _score: 0 })),

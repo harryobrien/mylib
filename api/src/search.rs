@@ -37,6 +37,16 @@ fn build_search_query(
     fields: &[Field],
     ngram_fields: &[Field],
 ) -> Box<dyn Query> {
+    build_search_query_with_boosts(query_str, index, fields, ngram_fields, &[])
+}
+
+fn build_search_query_with_boosts(
+    query_str: &str,
+    index: &Index,
+    fields: &[Field],
+    ngram_fields: &[Field],
+    field_boosts: &[(Field, f32)],
+) -> Box<dyn Query> {
     let query_lower = query_str.to_lowercase();
     let terms: Vec<&str> = query_lower.split_whitespace().collect();
 
@@ -50,6 +60,9 @@ fn build_search_query(
     // Use AND by default so all terms must match (e.g., "Goblet of Fire" requires both goblet AND fire)
     let mut parser = QueryParser::for_index(index, fields.to_vec());
     parser.set_conjunction_by_default();
+    for (field, boost) in field_boosts {
+        parser.set_field_boost(*field, *boost);
+    }
     if let Ok(parsed) = parser.parse_query(query_str) {
         subqueries.push((Occur::Should, Box::new(BoostQuery::new(parsed, 2.0))));
     }
@@ -281,7 +294,9 @@ impl WorksIndex {
             self.fields.subjects,
         ];
         let ngram_fields = vec![self.fields.title_ngram, self.fields.author_names_ngram];
-        let query = build_search_query(query, &self.index, &fields, &ngram_fields);
+        // Boost author_names matches higher - helps when searching for author names
+        let field_boosts = vec![(self.fields.author_names, 2.0)];
+        let query = build_search_query_with_boosts(query, &self.index, &fields, &ngram_fields, &field_boosts);
         // Fetch extra candidates for re-ranking
         let fetch_limit = (limit * 3).max(100);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch_limit))?;

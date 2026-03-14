@@ -83,24 +83,27 @@ function esc(str: string | undefined): string {
   return str.replace(/[\uFE20\uFE21]/g, '');
 }
 
-function scoreResult(r: TaggedResult, query: string): number {
+function scoreResult(r: TaggedResult & { score?: number }, query: string): number {
   const q = query.toLowerCase();
   const primary = (r.name || r.title || '').toLowerCase();
 
-  if (primary === q) return 100;
-  if (primary.startsWith(q)) return 80;
+  let textScore = 10;
+  if (primary === q) textScore = 100;
+  else if (primary.startsWith(q)) textScore = 80;
+  else {
+    const words = primary.split(/\s+/);
+    if (words.some(w => w.startsWith(q))) textScore = 60;
+    else {
+      const qWords = q.split(/\s+/);
+      if (qWords.every(qw => primary.includes(qw))) textScore = 50;
+      else if (primary.includes(q)) textScore = 40;
+      else if (r.author_names && r.author_names.toLowerCase().includes(q)) textScore = 30;
+    }
+  }
 
-  const words = primary.split(/\s+/);
-  if (words.some(w => w.startsWith(q))) return 60;
-
-  const qWords = q.split(/\s+/);
-  if (qWords.every(qw => primary.includes(qw))) return 50;
-
-  if (primary.includes(q)) return 40;
-
-  if (r.author_names && r.author_names.toLowerCase().includes(q)) return 30;
-
-  return 10;
+  // Blend with backend score (includes popularity)
+  const backendScore = r.score || 0;
+  return textScore + Math.log1p(backendScore) * 2;
 }
 
 export default function SearchBox() {
@@ -193,12 +196,13 @@ export default function SearchBox() {
       displayedVersionRef.current = version;
 
       const elapsed = (performance.now() - start).toFixed(0);
+      const typeOrder = { author: 0, work: 1, edition: 2 };
       const combined: TaggedResult[] = [
         ...data.works.map(w => ({ ...w, _type: 'work' as const, _score: 0 })),
         ...data.authors.map(a => ({ ...a, title: a.name, _type: 'author' as const, _score: 0 })),
         ...data.editions.map(e => ({ ...e, _type: 'edition' as const, _score: 0 })),
       ].map(r => ({ ...r, _score: scoreResult(r, q) }))
-       .sort((a, b) => b._score - a._score);
+       .sort((a, b) => b._score - a._score || typeOrder[a._type] - typeOrder[b._type]);
 
       const statsText = `${combined.length} results in ${elapsed}ms`;
       setStats(statsText);

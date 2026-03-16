@@ -344,12 +344,17 @@ impl WorksIndex {
             candidates.push((hit, popularity));
         }
 
-        // Re-rank: blend text relevance with popularity boost
-        candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
-            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        // Re-rank: normalize text scores, then blend with popularity
+        let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
+        if max_text > 0.0 {
+            candidates.sort_by(|a, b| {
+                let norm_a = (a.0.score / max_text) as f64;
+                let norm_b = (b.0.score / max_text) as f64;
+                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
+                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
 
         Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }
@@ -523,11 +528,16 @@ impl AuthorsIndex {
             candidates.push((hit, popularity));
         }
 
-        candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
-            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
+        if max_text > 0.0 {
+            candidates.sort_by(|a, b| {
+                let norm_a = (a.0.score / max_text) as f64;
+                let norm_b = (b.0.score / max_text) as f64;
+                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
+                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
 
         Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }
@@ -741,11 +751,16 @@ impl EditionsIndex {
             candidates.push((hit, popularity));
         }
 
-        candidates.sort_by(|a, b| {
-            let score_a = (a.0.score as f64) * 0.5 + (1.0 + a.1).sqrt() * 2.0;
-            let score_b = (b.0.score as f64) * 0.5 + (1.0 + b.1).sqrt() * 2.0;
-            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
+        if max_text > 0.0 {
+            candidates.sort_by(|a, b| {
+                let norm_a = (a.0.score / max_text) as f64;
+                let norm_b = (b.0.score / max_text) as f64;
+                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
+                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
 
         Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
     }

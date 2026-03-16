@@ -235,9 +235,8 @@ async fn logout(
 }
 
 async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<AuthResponse> {
-    let user = async {
-        let token = extract_session_token(&headers)?;
-        let (id, email, email_verified) = sqlx::query_as::<_, (i32, String, bool)>(
+    let user = match extract_session_token(&headers) {
+        Some(token) => sqlx::query_as::<_, (i32, String, bool)>(
             r#"
             SELECT u.id, u.email, u.email_verified
             FROM users u
@@ -248,14 +247,15 @@ async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<Auth
         .bind(&token)
         .fetch_optional(&state.db)
         .await
-        .ok()??;
-        Some(UserInfo {
+        .ok()
+        .flatten()
+        .map(|(id, email, email_verified)| UserInfo {
             id,
             email,
             email_verified,
-        })
-    }
-    .await;
+        }),
+        None => None,
+    };
 
     Json(AuthResponse {
         success: true,

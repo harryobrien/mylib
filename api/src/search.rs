@@ -347,12 +347,12 @@ impl WorksIndex {
         // Re-rank: normalize text scores, then blend with popularity
         let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
         if max_text > 0.0 {
+            for (hit, popularity) in &mut candidates {
+                let norm = (hit.score / max_text) as f64;
+                hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
+            }
             candidates.sort_by(|a, b| {
-                let norm_a = (a.0.score / max_text) as f64;
-                let norm_b = (b.0.score / max_text) as f64;
-                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
-                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 
@@ -530,12 +530,12 @@ impl AuthorsIndex {
 
         let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
         if max_text > 0.0 {
+            for (hit, popularity) in &mut candidates {
+                let norm = (hit.score / max_text) as f64;
+                hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
+            }
             candidates.sort_by(|a, b| {
-                let norm_a = (a.0.score / max_text) as f64;
-                let norm_b = (b.0.score / max_text) as f64;
-                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
-                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 
@@ -753,12 +753,12 @@ impl EditionsIndex {
 
         let max_text = candidates.iter().map(|c| c.0.score).fold(0.0f32, f32::max);
         if max_text > 0.0 {
+            for (hit, popularity) in &mut candidates {
+                let norm = (hit.score / max_text) as f64;
+                hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
+            }
             candidates.sort_by(|a, b| {
-                let norm_a = (a.0.score / max_text) as f64;
-                let norm_b = (b.0.score / max_text) as f64;
-                let score_a = norm_a * 0.4 + (1.0 + a.1).ln() * 0.1;
-                let score_b = norm_b * 0.4 + (1.0 + b.1).ln() * 0.1;
-                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 

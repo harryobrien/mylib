@@ -234,34 +234,34 @@ async fn logout(
     ))
 }
 
-async fn me(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Result<Json<AuthResponse>, AuthError> {
-    let session_token = extract_session_token(&headers).ok_or(AuthError::Unauthorized)?;
+async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<AuthResponse> {
+    let user = async {
+        let token = extract_session_token(&headers)?;
+        let (id, email, email_verified) = sqlx::query_as::<_, (i32, String, bool)>(
+            r#"
+            SELECT u.id, u.email, u.email_verified
+            FROM users u
+            JOIN sessions s ON u.id = s.user_id
+            WHERE s.token = $1 AND s.expires_at > NOW()
+            "#,
+        )
+        .bind(&token)
+        .fetch_optional(&state.db)
+        .await
+        .ok()??;
+        Some(UserInfo {
+            id,
+            email,
+            email_verified,
+        })
+    }
+    .await;
 
-    let user = sqlx::query_as::<_, (i32, String, bool)>(
-        r#"
-        SELECT u.id, u.email, u.email_verified
-        FROM users u
-        JOIN sessions s ON u.id = s.user_id
-        WHERE s.token = $1 AND s.expires_at > NOW()
-        "#,
-    )
-    .bind(&session_token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(AuthError::Unauthorized)?;
-
-    Ok(Json(AuthResponse {
+    Json(AuthResponse {
         success: true,
         message: None,
-        user: Some(UserInfo {
-            id: user.0,
-            email: user.1,
-            email_verified: user.2,
-        }),
-    }))
+        user,
+    })
 }
 
 #[derive(Deserialize)]

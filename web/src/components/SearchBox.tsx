@@ -51,30 +51,17 @@ interface SearchResponse {
   editions: EditionHit[];
 }
 
-type ResultType = 'work' | 'author' | 'edition';
-
-interface TaggedResult {
-  _type: ResultType;
-  _score: number;
-  id: number;
-  slug: string;
-  work_slug?: string;
-  title?: string;
-  name?: string;
-  subtitle?: string;
-  author_names?: string;
-  alternate_names?: string;
-  publishers?: string;
-  publish_year?: number;
-  isbns?: string;
-  cover_id?: number;
-  ratings_count?: number;
-  rating_avg?: number;
+interface GroupedResults {
+  featuredAuthor?: AuthorHit;
+  worksByAuthor: WorkHit[];
+  otherWorks: WorkHit[];
+  otherAuthors: AuthorHit[];
+  editions: EditionHit[];
 }
 
 interface SavedState {
   q: string;
-  r: TaggedResult[];
+  g: GroupedResults;
   s: string;
 }
 
@@ -83,28 +70,70 @@ function esc(str: string | undefined): string {
   return str.replace(/[\uFE20\uFE21]/g, '');
 }
 
-function scoreResult(r: TaggedResult & { score?: number }, query: string): number {
-  const q = query.toLowerCase();
-  const primary = (r.name || r.title || '').toLowerCase();
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
-  let textScore = 10;
-  if (primary === q) textScore = 100;
-  else if (primary.startsWith(q)) textScore = 80;
-  else {
-    const words = primary.split(/\s+/);
-    if (words.some(w => w.startsWith(q))) textScore = 60;
-    else {
-      const qWords = q.split(/\s+/);
-      if (qWords.every(qw => primary.includes(qw))) textScore = 50;
-      else if (primary.includes(q)) textScore = 40;
-      else if (r.author_names && r.author_names.toLowerCase().includes(q)) textScore = 30;
+function groupResults(data: SearchResponse, query: string): GroupedResults {
+  const q = query.toLowerCase().trim();
+  const qNorm = normalizeForMatch(query);
+
+  let featuredAuthor: AuthorHit | undefined;
+  for (const author of data.authors) {
+    const nameNorm = normalizeForMatch(author.name);
+    if (nameNorm === qNorm || author.name.toLowerCase() === q) {
+      featuredAuthor = author;
+      break;
     }
   }
 
-  // Blend with backend score (includes popularity)
-  const backendScore = r.score || 0;
-  return textScore + Math.log1p(backendScore) * 2;
+  if (!featuredAuthor && data.authors.length > 0) {
+    const topAuthor = data.authors[0];
+    const nameWords = topAuthor.name.toLowerCase().split(/\s+/);
+    const queryWords = q.split(/\s+/);
+    if (queryWords.length >= 2 && queryWords.every(qw => nameWords.some(nw => nw.startsWith(qw)))) {
+      featuredAuthor = topAuthor;
+    }
+  }
+
+  let worksByAuthor: WorkHit[] = [];
+  let otherWorks: WorkHit[] = [];
+
+  if (featuredAuthor) {
+    const authorNameLower = featuredAuthor.name.toLowerCase();
+    for (const work of data.works) {
+      if (work.author_names?.toLowerCase().includes(authorNameLower)) {
+        worksByAuthor.push(work);
+      } else {
+        otherWorks.push(work);
+      }
+    }
+    worksByAuthor.sort((a, b) => b.score - a.score);
+    otherWorks.sort((a, b) => b.score - a.score);
+  } else {
+    otherWorks = [...data.works].sort((a, b) => b.score - a.score);
+  }
+
+  const otherAuthors = featuredAuthor
+    ? data.authors.filter(a => a.id !== featuredAuthor!.id)
+    : data.authors;
+
+  return {
+    featuredAuthor,
+    worksByAuthor,
+    otherWorks,
+    otherAuthors,
+    editions: data.editions,
+  };
 }
+
+const emptyGrouped: GroupedResults = {
+  featuredAuthor: undefined,
+  worksByAuthor: [],
+  otherWorks: [],
+  otherAuthors: [],
+  editions: [],
+};
 
 export default function SearchBox() {
   const [query, setQuery] = useState<string>(() => {
@@ -115,12 +144,12 @@ export default function SearchBox() {
     return '';
   });
 
-  const [results, setResults] = useState<TaggedResult[]>(() => {
+  const [grouped, setGrouped] = useState<GroupedResults>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return (JSON.parse(saved) as SavedState).r || [];
+      if (saved) return (JSON.parse(saved) as SavedState).g || emptyGrouped;
     } catch {}
-    return [];
+    return emptyGrouped;
   });
 
   const [stats, setStats] = useState<string>(() => {
@@ -144,22 +173,24 @@ export default function SearchBox() {
       if (storeQuery) {
         search(storeQuery);
       } else {
-        setResults([]);
+        setGrouped(emptyGrouped);
         setStats('');
-        saveState('', [], '');
+        saveState('', emptyGrouped, '');
       }
     }
   }, [trigger]);
 
   useEffect(() => {
-    if (query && results.length === 0) {
+    const hasResults = grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
+      grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0;
+    if (query && !hasResults) {
       search(query);
     }
   }, []);
 
-  function saveState(q: string, r: TaggedResult[], s: string): void {
+  function saveState(q: string, g: GroupedResults, s: string): void {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q, r, s }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q, g, s }));
       $searchQuery.set(q);
     } catch {}
   }
@@ -178,36 +209,31 @@ export default function SearchBox() {
     if (!q.trim()) {
       searchVersionRef.current++;
       displayedVersionRef.current = searchVersionRef.current;
-      setResults([]);
+      setGrouped(emptyGrouped);
       setStats('');
-      saveState('', [], '');
+      saveState('', emptyGrouped, '');
       return;
     }
 
     const version = ++searchVersionRef.current;
     const start = performance.now();
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=10`);
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=15`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: SearchResponse = await res.json();
 
-      // Ignore if a newer search has already been displayed
       if (version < displayedVersionRef.current) return;
       displayedVersionRef.current = version;
 
       const elapsed = (performance.now() - start).toFixed(0);
-      const typeOrder = { author: 0, work: 1, edition: 2 };
-      const combined: TaggedResult[] = [
-        ...data.works.map(w => ({ ...w, _type: 'work' as const, _score: 0 })),
-        ...data.authors.map(a => ({ ...a, title: a.name, _type: 'author' as const, _score: 0 })),
-        ...data.editions.map(e => ({ ...e, _type: 'edition' as const, _score: 0 })),
-      ].map(r => ({ ...r, _score: scoreResult(r, q) }))
-       .sort((a, b) => b._score - a._score || typeOrder[a._type] - typeOrder[b._type]);
+      const g = groupResults(data, q);
+      const total = (g.featuredAuthor ? 1 : 0) + g.worksByAuthor.length +
+        g.otherWorks.length + g.otherAuthors.length + g.editions.length;
 
-      const statsText = `${combined.length} results in ${elapsed}ms`;
+      const statsText = `${total} results in ${elapsed}ms`;
       setStats(statsText);
-      setResults(combined);
-      saveState(q, combined, statsText);
+      setGrouped(g);
+      saveState(q, g, statsText);
     } catch (err) {
       setStats(`Error: ${(err as Error).message}`);
     }
@@ -223,15 +249,104 @@ export default function SearchBox() {
 
   function handleClear(): void {
     setQuery('');
-    setResults([]);
+    setGrouped(emptyGrouped);
     setStats('');
-    saveState('', [], '');
+    saveState('', emptyGrouped, '');
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
     if (e.key === 'Escape') {
       handleClear();
     }
+  }
+
+  const hasResults = grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
+    grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0;
+
+  function renderWork(w: WorkHit) {
+    return (
+      <a
+        href={`/works/${w.slug}`}
+        key={`work-${w.id}`}
+        className="result"
+        onClick={() => saveToHistory(query)}
+      >
+        <div className="result-cover">
+          {w.cover_id ? (
+            <img
+              src={`https://covers.openlibrary.org/b/id/${w.cover_id}-S.jpg`}
+              alt=""
+              width={33}
+              height={50}
+              loading="lazy"
+            />
+          ) : (
+            <div className="cover-placeholder" />
+          )}
+        </div>
+        <div className="result-content">
+          <div className="result-title">{esc(w.title)}</div>
+          {w.subtitle && <div className="result-subtitle">{esc(w.subtitle)}</div>}
+          {w.author_names && <div className="result-authors">{esc(w.author_names)}</div>}
+          {w.ratings_count && w.ratings_count > 0 && (
+            <div className="result-rating">
+              <span className="rating-stars">{w.rating_avg?.toFixed(1)}</span>
+              <span className="rating-count">({w.ratings_count.toLocaleString()})</span>
+            </div>
+          )}
+        </div>
+      </a>
+    );
+  }
+
+  function renderAuthor(a: AuthorHit) {
+    return (
+      <a
+        href={`/authors/${a.slug}`}
+        key={`author-${a.id}`}
+        className="result"
+        onClick={() => saveToHistory(query)}
+      >
+        <div className="result-content">
+          <div className="result-title">{esc(a.name)}</div>
+          {a.alternate_names && <div className="result-meta">{esc(a.alternate_names)}</div>}
+        </div>
+      </a>
+    );
+  }
+
+  function renderEdition(e: EditionHit) {
+    return (
+      <a
+        href={`/works/${e.work_slug}`}
+        key={`edition-${e.id}`}
+        className="result"
+        onClick={() => saveToHistory(query)}
+      >
+        <div className="result-cover">
+          {e.cover_id ? (
+            <img
+              src={`https://covers.openlibrary.org/b/id/${e.cover_id}-S.jpg`}
+              alt=""
+              width={33}
+              height={50}
+              loading="lazy"
+            />
+          ) : (
+            <div className="cover-placeholder" />
+          )}
+        </div>
+        <div className="result-content">
+          <div className="result-title">{esc(e.title)}</div>
+          {e.subtitle && <div className="result-subtitle">{esc(e.subtitle)}</div>}
+          <div className="result-meta">
+            {e.publishers && <span>{esc(e.publishers)}</span>}
+            {e.publish_year && <span> · {e.publish_year}</span>}
+            {e.isbns && <span> · {esc(e.isbns.split(' ')[0])}</span>}
+          </div>
+        </div>
+      </a>
+    );
   }
 
   return (
@@ -252,58 +367,64 @@ export default function SearchBox() {
         )}
       </div>
 
-      {(query || results.length > 0) && <div className="stats">{stats}</div>}
+      {(query || hasResults) && <div className="stats">{stats}</div>}
 
       <div className="results">
-        {results.length === 0 && query && <div className="empty">No results</div>}
-        {results.map((r) => (
-          <a
-            href={`/${r._type === 'edition' ? 'works' : r._type + 's'}/${r._type === 'edition' ? r.work_slug : r.slug}`}
-            key={`${r._type}-${r.id}`}
-            className="result"
-            onClick={() => saveToHistory(query)}
-          >
-            <span className={`tag tag-${r._type}`}>{r._type}</span>
-            {r._type !== 'author' && (
-              <div className="result-cover">
-                {r.cover_id ? (
-                  <img
-                    src={`https://covers.openlibrary.org/b/id/${r.cover_id}-S.jpg`}
-                    alt=""
-                    width={33}
-                    height={50}
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="cover-placeholder" />
-                )}
-              </div>
-            )}
-            <div className="result-content">
-              <div className="result-title">{esc(r.title || r.name)}</div>
-              {r.subtitle && <div className="result-subtitle">{esc(r.subtitle)}</div>}
-              {r._type === 'work' && r.author_names && (
-                <div className="result-authors">{esc(r.author_names)}</div>
-              )}
-              {r._type === 'work' && r.ratings_count && r.ratings_count > 0 && (
-                <div className="result-rating">
-                  <span className="rating-stars">{r.rating_avg?.toFixed(1)}</span>
-                  <span className="rating-count">({r.ratings_count.toLocaleString()})</span>
+        {!hasResults && query && <div className="empty">No results</div>}
+
+        {grouped.featuredAuthor && (
+          <div className="result-group">
+            <a
+              href={`/authors/${grouped.featuredAuthor.slug}`}
+              className="featured-author"
+              onClick={() => saveToHistory(query)}
+            >
+              <div className="featured-author-name">{esc(grouped.featuredAuthor.name)}</div>
+              {grouped.featuredAuthor.alternate_names && (
+                <div className="featured-author-aka">
+                  {esc(grouped.featuredAuthor.alternate_names)}
                 </div>
               )}
-              {r._type === 'edition' && (
-                <div className="result-meta">
-                  {r.publishers && <span>{esc(r.publishers)}</span>}
-                  {r.publish_year && <span> · {r.publish_year}</span>}
-                  {r.isbns && <span> · {esc(r.isbns.split(' ')[0])}</span>}
+              {grouped.worksByAuthor.length > 0 && (
+                <div className="featured-author-works">
+                  {grouped.worksByAuthor.slice(0, 3).map(w => w.title).join(' · ')}
                 </div>
               )}
-              {r._type === 'author' && r.alternate_names && (
-                <div className="result-meta">{esc(r.alternate_names)}</div>
-              )}
+            </a>
+          </div>
+        )}
+
+        {grouped.worksByAuthor.length > 0 && (
+          <div className="result-group">
+            <div className="result-group-header">
+              Works by {grouped.featuredAuthor?.name}
             </div>
-          </a>
-        ))}
+            {grouped.worksByAuthor.slice(0, 5).map(renderWork)}
+          </div>
+        )}
+
+        {grouped.otherWorks.length > 0 && (
+          <div className="result-group">
+            <div className="result-group-header">
+              {grouped.featuredAuthor ? 'Other works' : 'Works'}
+            </div>
+            {grouped.otherWorks.slice(0, 5).map(renderWork)}
+          </div>
+        )}
+
+        {grouped.otherAuthors.length > 0 && (
+          <div className="result-group">
+            <div className="result-group-header">Authors</div>
+            {grouped.otherAuthors.slice(0, 3).map(renderAuthor)}
+          </div>
+        )}
+
+        {grouped.editions.length > 0 && (
+          <div className="result-group">
+            <div className="result-group-header">Editions</div>
+            {grouped.editions.slice(0, 3).map(renderEdition)}
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -437,6 +558,48 @@ export default function SearchBox() {
           padding: 40px;
           font-size: 13px;
           background: #faf6ed;
+        }
+        .result-group {
+          border-bottom: 1px solid #c9c4b8;
+        }
+        .result-group:last-child {
+          border-bottom: none;
+        }
+        .result-group-header {
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #8a8477;
+          padding: 10px 15px 6px;
+          background: #f0ebdf;
+          letter-spacing: 0.5px;
+        }
+        .featured-author {
+          display: block;
+          padding: 16px;
+          background: linear-gradient(to right, #e8f0e8, #f0ebdf);
+          text-decoration: none;
+          color: inherit;
+          border-bottom: 1px solid #c9c4b8;
+        }
+        .featured-author:hover {
+          background: linear-gradient(to right, #dce8dc, #e8e3d7);
+        }
+        .featured-author-name {
+          font-size: 18px;
+          font-weight: 600;
+          color: #1a1a1a;
+        }
+        .featured-author-aka {
+          font-size: 12px;
+          color: #5a5549;
+          margin-top: 2px;
+        }
+        .featured-author-works {
+          font-size: 13px;
+          color: #3a5a3a;
+          margin-top: 6px;
+          font-style: italic;
         }
       `}</style>
     </div>

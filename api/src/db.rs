@@ -113,12 +113,31 @@ pub async fn get_edition_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option
     .await
 }
 
-pub async fn get_author_works(pool: &PgPool, author_id: i32) -> sqlx::Result<Vec<Work>> {
+#[derive(Debug, sqlx::FromRow, serde::Serialize)]
+pub struct WorkWithPopularity {
+    pub id: i32,
+    pub key: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub first_publish_date: Option<String>,
+    pub description: Option<String>,
+    pub ratings_count: Option<i32>,
+    pub rating_avg: Option<f32>,
+    pub want_to_read: Option<i32>,
+    pub currently_reading: Option<i32>,
+    pub already_read: Option<i32>,
+}
+
+pub async fn get_author_works(pool: &PgPool, author_id: i32) -> sqlx::Result<Vec<WorkWithPopularity>> {
     sqlx::query_as(
         r#"
-        SELECT w.id, w.key, w.title, w.subtitle, w.first_publish_date, w.description
+        SELECT w.id, w.key, w.title, w.subtitle, w.first_publish_date, w.description,
+               wp.ratings_count,
+               (wp.ratings_sum::real / NULLIF(wp.ratings_count, 0))::float4 as rating_avg,
+               wp.want_to_read, wp.currently_reading, wp.already_read
         FROM works w
         JOIN work_authors wa ON w.id = wa.work_id
+        LEFT JOIN work_popularity wp ON w.id = wp.work_id
         WHERE wa.author_id = $1
         ORDER BY w.first_publish_date DESC NULLS LAST
         "#,
@@ -368,6 +387,7 @@ pub async fn get_work_popularity(pool: &PgPool, work_id: i32) -> sqlx::Result<Op
     .fetch_optional(pool)
     .await
 }
+
 
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
 pub struct EditionPopularity {

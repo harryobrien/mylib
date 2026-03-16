@@ -149,12 +149,6 @@ pub struct EditionSummary {
     popularity: Option<db::EditionPopularity>,
 }
 
-#[derive(Serialize)]
-pub struct WorkSummary {
-    slug: String,
-    #[serde(flatten)]
-    work: db::Work,
-}
 
 async fn get_work(
     State(state): State<Arc<AppState>>,
@@ -249,18 +243,25 @@ async fn get_author(
 async fn get_author_works(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<WorkSummary>>, AppError> {
+) -> Result<Json<Vec<AuthorWorkSummary>>, AppError> {
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
     let works = db::get_author_works(&state.db, id).await?;
     let works = works
         .into_iter()
-        .map(|w| WorkSummary {
+        .map(|w| AuthorWorkSummary {
             slug: base36::encode(w.id as i64),
             work: w,
         })
         .collect();
     Ok(Json(works))
+}
+
+#[derive(Serialize)]
+pub struct AuthorWorkSummary {
+    slug: String,
+    #[serde(flatten)]
+    work: db::WorkWithPopularity,
 }
 
 #[derive(Serialize)]

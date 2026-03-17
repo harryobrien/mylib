@@ -17,6 +17,21 @@ fn register_raw_tokenizer(index: &Index) {
     index.tokenizers().register(RAW_TOKENIZER, tokenizer);
 }
 
+/// Normalize text for search:
+/// - Remove periods (J.K. -> JK)
+/// - Remove apostrophes (O'Brien -> OBrien)
+/// - Replace hyphens with spaces (Anne-Marie -> Anne Marie)
+/// - Strip diacritics (García -> Garcia, Brontë -> Bronte)
+pub fn normalize_for_search(text: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+
+    text.replace(['.', '\'', '\u{2019}'], "") // curly apostrophe
+        .replace('-', " ")
+        .nfd()
+        .filter(|c| !('\u{0300}'..='\u{036f}').contains(c)) // filter combining diacritical marks
+        .collect()
+}
+
 /// Generate edge ngrams for each word in text.
 /// "Virginia Woolf" -> "vi vir virg virgi virgin virgini virginia wo woo wool woolf"
 pub fn generate_edge_ngrams(text: &str, min: usize, max: usize) -> String {
@@ -47,8 +62,8 @@ fn build_search_query_with_boosts(
     ngram_fields: &[Field],
     field_boosts: &[(Field, f32)],
 ) -> Box<dyn Query> {
-    let query_lower = query_str.to_lowercase();
-    let terms: Vec<&str> = query_lower.split_whitespace().collect();
+    let query_normalized = normalize_for_search(&query_str.to_lowercase());
+    let terms: Vec<&str> = query_normalized.split_whitespace().collect();
 
     if terms.is_empty() {
         return Box::new(tantivy::query::EmptyQuery);
@@ -63,7 +78,7 @@ fn build_search_query_with_boosts(
     for (field, boost) in field_boosts {
         parser.set_field_boost(*field, *boost);
     }
-    if let Ok(parsed) = parser.parse_query(query_str) {
+    if let Ok(parsed) = parser.parse_query(&query_normalized) {
         subqueries.push((Occur::Should, Box::new(BoostQuery::new(parsed, 2.0))));
     }
 
@@ -296,7 +311,13 @@ impl WorksIndex {
         let ngram_fields = vec![self.fields.title_ngram, self.fields.author_names_ngram];
         // Boost author_names matches higher - helps when searching for author names
         let field_boosts = vec![(self.fields.author_names, 2.0)];
-        let query = build_search_query_with_boosts(query, &self.index, &fields, &ngram_fields, &field_boosts);
+        let query = build_search_query_with_boosts(
+            query,
+            &self.index,
+            &fields,
+            &ngram_fields,
+            &field_boosts,
+        );
         // Fetch extra candidates for re-ranking
         let fetch_limit = (limit * 3).max(100);
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch_limit))?;
@@ -337,8 +358,12 @@ impl WorksIndex {
                     .get_first(self.fields.first_publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
-                ratings_count: doc.get_first(self.fields.ratings_count).and_then(|v| v.as_i64()),
-                rating_avg: doc.get_first(self.fields.rating_avg).and_then(|v| v.as_f64()),
+                ratings_count: doc
+                    .get_first(self.fields.ratings_count)
+                    .and_then(|v| v.as_i64()),
+                rating_avg: doc
+                    .get_first(self.fields.rating_avg)
+                    .and_then(|v| v.as_f64()),
                 score: text_score,
             };
             candidates.push((hit, popularity));
@@ -352,11 +377,17 @@ impl WorksIndex {
                 hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
             }
             candidates.sort_by(|a, b| {
-                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score
+                    .partial_cmp(&a.0.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 
-        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
+        Ok(candidates
+            .into_iter()
+            .take(limit)
+            .map(|(hit, _)| hit)
+            .collect())
     }
 }
 
@@ -477,7 +508,11 @@ impl AuthorsIndex {
 
     pub fn warm(&self) {
         let searcher = self.reader.searcher();
-        let fields_to_warm = [self.fields.name, self.fields.name_ngram, self.fields.alternate_names];
+        let fields_to_warm = [
+            self.fields.name,
+            self.fields.name_ngram,
+            self.fields.alternate_names,
+        ];
         for segment_reader in searcher.segment_readers() {
             for field in &fields_to_warm {
                 if let Ok(idx) = segment_reader.inverted_index(*field) {
@@ -535,11 +570,17 @@ impl AuthorsIndex {
                 hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
             }
             candidates.sort_by(|a, b| {
-                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score
+                    .partial_cmp(&a.0.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 
-        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
+        Ok(candidates
+            .into_iter()
+            .take(limit)
+            .map(|(hit, _)| hit)
+            .collect())
     }
 }
 
@@ -744,8 +785,12 @@ impl EditionsIndex {
                     .get_first(self.fields.publish_year)
                     .and_then(|v| v.as_i64()),
                 cover_id: doc.get_first(self.fields.cover_id).and_then(|v| v.as_i64()),
-                ratings_count: doc.get_first(self.fields.ratings_count).and_then(|v| v.as_i64()),
-                rating_avg: doc.get_first(self.fields.rating_avg).and_then(|v| v.as_f64()),
+                ratings_count: doc
+                    .get_first(self.fields.ratings_count)
+                    .and_then(|v| v.as_i64()),
+                rating_avg: doc
+                    .get_first(self.fields.rating_avg)
+                    .and_then(|v| v.as_f64()),
                 score: text_score,
             };
             candidates.push((hit, popularity));
@@ -758,11 +803,17 @@ impl EditionsIndex {
                 hit.score = (norm * 0.4 + (1.0 + *popularity).ln() * 0.1) as f32;
             }
             candidates.sort_by(|a, b| {
-                b.0.score.partial_cmp(&a.0.score).unwrap_or(std::cmp::Ordering::Equal)
+                b.0.score
+                    .partial_cmp(&a.0.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 
-        Ok(candidates.into_iter().take(limit).map(|(hit, _)| hit).collect())
+        Ok(candidates
+            .into_iter()
+            .take(limit)
+            .map(|(hit, _)| hit)
+            .collect())
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     db,
-    search::{generate_edge_ngrams, SearchIndex},
+    search::{generate_edge_ngrams, normalize_for_search, SearchIndex},
 };
 use sqlx::PgPool;
 
@@ -139,10 +139,11 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
                 doc.add_text(search.works.fields.subjects, s);
             }
             if let Some(ref a) = w.author_names {
-                doc.add_text(search.works.fields.author_names, a);
+                let normalized = normalize_for_search(a);
+                doc.add_text(search.works.fields.author_names, &normalized);
                 doc.add_text(
                     search.works.fields.author_names_ngram,
-                    &generate_edge_ngrams(a, 2, 8),
+                    &generate_edge_ngrams(&normalized, 2, 8),
                 );
             }
             if let Some(y) = year {
@@ -189,10 +190,11 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
             let mut doc = tantivy::TantivyDocument::new();
             doc.add_i64(search.authors.fields.id, a.id as i64);
             doc.add_text(search.authors.fields.key, &a.key);
-            doc.add_text(search.authors.fields.name, &a.name);
+            let normalized_name = normalize_for_search(&a.name);
+            doc.add_text(search.authors.fields.name, &normalized_name);
             doc.add_text(
                 search.authors.fields.name_ngram,
-                &generate_edge_ngrams(&a.name, 2, 8),
+                &generate_edge_ngrams(&normalized_name, 2, 8),
             );
             if let Some(ref alt) = a.alternate_names {
                 doc.add_text(search.authors.fields.alternate_names, alt);

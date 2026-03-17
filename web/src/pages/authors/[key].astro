@@ -60,17 +60,31 @@ function esc(str) {
       <div class="works-list">
         {works.map(w => (
           <a href={`/works/${w.slug}`} class="work">
-            <div class="work-title">{esc(w.title)}</div>
-            {w.subtitle && <div class="work-subtitle">{esc(w.subtitle)}</div>}
-            <div class="work-meta">
-              {w.first_publish_date && <span>{w.first_publish_date}</span>}
-              {w.ratings_count > 0 && (
-                <span>
-                  {w.first_publish_date && ' · '}
-                  <span class="rating">{w.rating_avg?.toFixed(2)}</span>
-                  ({w.ratings_count.toLocaleString()} ratings)
-                </span>
-              )}
+            {w.cover_id ? (
+              <img
+                src={`https://covers.openlibrary.org/b/id/${w.cover_id}-S.jpg`}
+                alt=""
+                width="33"
+                height="50"
+                class="work-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div class="work-cover-placeholder" />
+            )}
+            <div class="work-info">
+              <div class="work-title">{esc(w.title)}</div>
+              {w.subtitle && <div class="work-subtitle">{esc(w.subtitle)}</div>}
+              <div class="work-meta">
+                {w.first_publish_date && <span>{w.first_publish_date}</span>}
+                {w.ratings_count > 0 && (
+                  <span>
+                    {w.first_publish_date && ' · '}
+                    <span class="rating">{w.rating_avg?.toFixed(2)}</span>
+                    ({w.ratings_count.toLocaleString()} ratings)
+                  </span>
+                )}
+              </div>
             </div>
           </a>
         ))}
@@ -103,15 +117,34 @@ function esc(str) {
     border: 1px solid #000;
   }
   .work {
-    display: block;
+    display: flex;
+    gap: 12px;
     padding: 12px 15px;
     border-bottom: 1px solid #d9d4c8;
     background: #faf6ed;
     text-decoration: none;
     color: inherit;
+    align-items: flex-start;
   }
   .work:last-child { border-bottom: none; }
   .work:hover { background: #f0ebdf; }
+  .work-cover {
+    width: 33px;
+    height: 50px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #e8e4d9;
+  }
+  .work-cover-placeholder {
+    width: 33px;
+    height: 50px;
+    flex-shrink: 0;
+    background: #e8e4d9;
+  }
+  .work-info {
+    flex: 1;
+    min-width: 0;
+  }
   .work-title {
     font-weight: 500;
     margin-bottom: 2px;

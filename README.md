@@ -3,8 +3,7 @@
 ## TODO
 - User accounts
 	- Social authentication
-	- Book lists, ratings, book completion, etc
+	- Book lists, ratings, etc
 - User edits
 	- Revision tracking
 	- Reindexing on changes
-- Parallelize reindexing

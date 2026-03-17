@@ -121,6 +121,7 @@ pub struct WorkWithPopularity {
     pub subtitle: Option<String>,
     pub first_publish_date: Option<String>,
     pub description: Option<String>,
+    pub cover_id: Option<i64>,
     pub ratings_count: Option<i32>,
     pub rating_avg: Option<f32>,
     pub want_to_read: Option<i32>,
@@ -132,12 +133,22 @@ pub async fn get_author_works(pool: &PgPool, author_id: i32) -> sqlx::Result<Vec
     sqlx::query_as(
         r#"
         SELECT w.id, w.key, w.title, w.subtitle, w.first_publish_date, w.description,
+               c.cover_id,
                wp.ratings_count,
                (wp.ratings_sum::real / NULLIF(wp.ratings_count, 0))::float4 as rating_avg,
                wp.want_to_read, wp.currently_reading, wp.already_read
         FROM works w
         JOIN work_authors wa ON w.id = wa.work_id
         LEFT JOIN work_popularity wp ON w.id = wp.work_id
+        LEFT JOIN LATERAL (
+            SELECT ec.cover_id
+            FROM editions e
+            JOIN edition_covers ec ON e.id = ec.edition_id
+            JOIN cover_metadata cm ON ec.cover_id = cm.id
+            WHERE e.work_id = w.id
+            ORDER BY ec.position
+            LIMIT 1
+        ) c ON true
         WHERE wa.author_id = $1
         ORDER BY w.first_publish_date DESC NULLS LAST
         "#,
@@ -168,14 +179,19 @@ pub async fn get_work_editions(pool: &PgPool, work_id: i32) -> sqlx::Result<Vec<
         SELECT e.id, e.key, e.work_id, e.title, e.subtitle, e.publish_date,
                string_agg(DISTINCT ep.publisher, ', ') as publishers,
                e.physical_format, e.number_of_pages,
-               (SELECT ec.cover_id FROM edition_covers ec
-                JOIN cover_metadata cm ON ec.cover_id = cm.id
-                WHERE ec.edition_id = e.id
-                ORDER BY ec.position LIMIT 1) as cover_id
+               c.cover_id
         FROM editions e
         LEFT JOIN edition_publishers ep ON e.id = ep.edition_id
+        LEFT JOIN LATERAL (
+            SELECT ec.cover_id
+            FROM edition_covers ec
+            JOIN cover_metadata cm ON ec.cover_id = cm.id
+            WHERE ec.edition_id = e.id
+            ORDER BY ec.position
+            LIMIT 1
+        ) c ON true
         WHERE e.work_id = $1
-        GROUP BY e.id
+        GROUP BY e.id, c.cover_id
         ORDER BY e.publish_date DESC NULLS LAST
         "#,
     )

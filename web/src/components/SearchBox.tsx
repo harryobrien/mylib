@@ -318,7 +318,7 @@ export default function SearchBox() {
   function renderEdition(e: EditionHit) {
     return (
       <a
-        href={`/works/${e.work_slug}`}
+        href={`/works/${e.work_slug}/${e.slug}`}
         key={`edition-${e.id}`}
         className="result"
         onClick={() => saveToHistory(query)}

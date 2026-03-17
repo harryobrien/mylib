@@ -1,22 +1,34 @@
 ---
-import Layout from '../../layouts/Layout.astro';
-import ReadingStatus from '../../components/ReadingStatus.tsx';
+import Layout from '../../../layouts/Layout.astro';
+import ReadingStatus from '../../../components/ReadingStatus.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
-const { key } = Astro.params;
+const { work_slug, edition_slug } = Astro.params;
 
-const res = await fetch(`${API_BASE}/works/${key}`);
-if (!res.ok) {
+// Fetch work and edition data in parallel
+const [workRes, editionRes] = await Promise.all([
+  fetch(`${API_BASE}/works/${work_slug}`),
+  fetch(`${API_BASE}/editions/${edition_slug}`)
+]);
+
+if (!workRes.ok || !editionRes.ok) {
   return Astro.redirect('/404');
 }
-const { authors, editions: unsortedEditions, popularity, ...work } = await res.json();
+
+const { authors, editions: unsortedEditions, popularity, ...work } = await workRes.json();
+const edition = await editionRes.json();
+
+// Verify edition belongs to this work
+if (edition.work_id !== work.id) {
+  return Astro.redirect(`/works/${work_slug}`);
+}
+
 const editions = unsortedEditions.sort((a, b) =>
   (b.popularity?.ratings_count ?? 0) - (a.popularity?.ratings_count ?? 0)
 );
 
-// Find first edition with a cover for the main image
-const mainCoverId = editions.find(e => e.cover_id)?.cover_id;
-const ogImage = mainCoverId ? `https://covers.openlibrary.org/b/id/${mainCoverId}-L.jpg` : undefined;
+const coverId = edition.cover_id || edition.covers?.[0]?.id;
+const ogImage = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : undefined;
 const authorList = authors.map(a => a.name).join(', ');
 const ogDescription = work.description
   ? work.description.slice(0, 200) + (work.description.length > 200 ? '...' : '')
@@ -31,20 +43,22 @@ function esc(str) {
 }
 ---
 
-<Layout title={work.title} description={ogDescription} image={ogImage} type="book" showPortal>
+<Layout title={`${edition.title} - ${work.title}`} description={ogDescription} image={ogImage} type="book" showPortal>
   <div class="work-header">
-    {mainCoverId && (
+    {coverId ? (
       <img
-        src={`https://covers.openlibrary.org/b/id/${mainCoverId}-M.jpg`}
+        src={`https://covers.openlibrary.org/b/id/${coverId}-M.jpg`}
         alt=""
         width="120"
         height="180"
         class="work-cover"
       />
+    ) : (
+      <div class="work-cover-placeholder" />
     )}
     <div class="work-info">
-      <h2 class="page-title">{esc(work.title)}</h2>
-      {work.subtitle && <p class="subtitle">{esc(work.subtitle)}</p>}
+      <h2 class="page-title">{esc(edition.title)}</h2>
+      {edition.subtitle && <p class="subtitle">{esc(edition.subtitle)}</p>}
 
       {authors.length > 0 && (
         <div class="authors">
@@ -56,24 +70,26 @@ function esc(str) {
         </div>
       )}
 
-      {work.first_publish_date && (
-        <p class="meta">First published: {work.first_publish_date}</p>
-      )}
+      <div class="edition-details">
+        {edition.publishers && <p class="meta"><strong>Publisher:</strong> {esc(edition.publishers)}</p>}
+        {edition.publish_date && <p class="meta"><strong>Published:</strong> {edition.publish_date}</p>}
+        {edition.physical_format && <p class="meta"><strong>Format:</strong> {edition.physical_format}</p>}
+        {edition.number_of_pages && <p class="meta"><strong>Pages:</strong> {edition.number_of_pages}</p>}
+        {edition.isbns?.length > 0 && (
+          <p class="meta"><strong>ISBN:</strong> {edition.isbns.join(', ')}</p>
+        )}
+      </div>
 
-      {popularity?.ratings_count > 0 && (
+      {edition.popularity?.ratings_count > 0 && (
         <div class="ratings">
-          <span class="rating-value">{popularity.rating_avg?.toFixed(2)}</span>
-          <span class="rating-count">({popularity.ratings_count.toLocaleString()} ratings)</span>
+          <span class="rating-value">{edition.popularity.rating_avg?.toFixed(2)}</span>
+          <span class="rating-count">({edition.popularity.ratings_count.toLocaleString()} ratings)</span>
         </div>
       )}
 
-      {(popularity?.want_to_read > 0 || popularity?.currently_reading > 0 || popularity?.already_read > 0) && (
-        <div class="reading-stats">
-          {popularity.want_to_read > 0 && <span>{popularity.want_to_read.toLocaleString()} want to read</span>}
-          {popularity.currently_reading > 0 && <span>{popularity.currently_reading.toLocaleString()} reading</span>}
-          {popularity.already_read > 0 && <span>{popularity.already_read.toLocaleString()} read</span>}
-        </div>
-      )}
+      <div class="reading-status-container">
+        <ReadingStatus slug={edition_slug} client:only="react" />
+      </div>
     </div>
   </div>
 
@@ -85,13 +101,18 @@ function esc(str) {
   )}
 
   <section class="editions">
-    <h2>Editions ({editions.length})</h2>
+    <h2>
+      <a href={`/works/${work_slug}`} class="work-link">All Editions ({editions.length})</a>
+    </h2>
     {editions.length === 0 ? (
       <p class="empty">No editions found</p>
     ) : (
       <div class="editions-list">
         {editions.map(e => (
-          <a href={`/works/${key}/${e.slug}`} class="edition">
+          <a
+            href={`/works/${work_slug}/${e.slug}`}
+            class:list={["edition", { selected: e.slug === edition_slug }]}
+          >
             {e.cover_id ? (
               <img
                 src={`https://covers.openlibrary.org/b/id/${e.cover_id}-S.jpg`}
@@ -105,10 +126,7 @@ function esc(str) {
               <div class="edition-cover-placeholder" />
             )}
             <div class="edition-info">
-              <div class="edition-title">
-                {esc(e.title)}
-                <ReadingStatus slug={e.slug} client:only="react" />
-              </div>
+              <div class="edition-title">{esc(e.title)}</div>
               <div class="edition-meta">
                 {e.publishers && <span>{esc(e.publishers)}</span>}
                 {e.publish_date && <span> · {e.publish_date}</span>}
@@ -139,6 +157,12 @@ function esc(str) {
     flex-shrink: 0;
     background: #e8e4d9;
   }
+  .work-cover-placeholder {
+    width: 120px;
+    height: 180px;
+    flex-shrink: 0;
+    background: #e8e4d9;
+  }
   .work-info {
     flex: 1;
     min-width: 0;
@@ -157,10 +181,16 @@ function esc(str) {
     font-size: 1.1em;
     margin-bottom: 15px;
   }
-  .meta {
+  .edition-details {
+    margin-bottom: 12px;
+  }
+  .edition-details .meta {
     font-size: 14px;
-    color: #8a8477;
-    margin-bottom: 0;
+    color: #5a5549;
+    margin: 4px 0;
+  }
+  .edition-details strong {
+    color: #3a3530;
   }
   .ratings {
     margin-top: 12px;
@@ -175,16 +205,19 @@ function esc(str) {
     color: #8a8477;
     margin-left: 4px;
   }
-  .reading-stats {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-    font-size: 13px;
-    color: #8a8477;
+  .reading-status-container {
+    margin-top: 15px;
   }
   .description {
     margin-bottom: 30px;
     line-height: 1.6;
+  }
+  .work-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .work-link:hover {
+    text-decoration: underline;
   }
   .editions-list {
     border: 1px solid #000;
@@ -201,6 +234,11 @@ function esc(str) {
   }
   .edition:last-child { border-bottom: none; }
   .edition:hover { background: #f0ebdf; }
+  .edition.selected {
+    background: #e8e4d9;
+    border-left: 3px solid #b8860b;
+    padding-left: 12px;
+  }
   .edition-cover {
     width: 33px;
     height: 50px;

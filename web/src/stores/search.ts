@@ -2,6 +2,7 @@ import { atom } from 'nanostores';
 
 export const $searchQuery = atom('');
 export const $triggerSearch = atom(0);
+export const $hasSearchResults = atom(false);
 
 export function setSearch(query: string) {
   $searchQuery.set(query);

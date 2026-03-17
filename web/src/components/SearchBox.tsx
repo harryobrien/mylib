@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import { useStore } from '@nanostores/react';
-import { $searchQuery, $triggerSearch } from '../stores/search';
+import { $searchQuery, $triggerSearch, $hasSearchResults } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 const STORAGE_KEY = 'mylib_search';
@@ -187,6 +187,12 @@ export default function SearchBox() {
       search(query);
     }
   }, []);
+
+  useEffect(() => {
+    const hasResults = !!(grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
+      grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0);
+    $hasSearchResults.set(hasResults);
+  }, [grouped]);
 
   function saveState(q: string, g: GroupedResults, s: string): void {
     try {

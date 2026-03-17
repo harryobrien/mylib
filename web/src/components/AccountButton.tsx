@@ -28,6 +28,9 @@ export default function AccountButton() {
   }
 
   if (!user) {
+    const isAuthPage = typeof window !== 'undefined' &&
+      (window.location.pathname === '/login' || window.location.pathname === '/register');
+    if (isAuthPage) return null;
     return <a href="/login" className="account-link">Login</a>;
   }
 

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { $user } from '../stores/user';
-import { $searchQuery, $userEditions, $userEditionsLoading, loadUserEditions, type Edition } from '../stores/search';
+import { $searchQuery, $hasSearchResults, $userEditions, $userEditionsLoading, loadUserEditions, type Edition } from '../stores/search';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -10,6 +10,7 @@ export default function ReadingShelves() {
   const editions = useStore($userEditions);
   const loading = useStore($userEditionsLoading);
   const searchQuery = useStore($searchQuery);
+  const hasSearchResults = useStore($hasSearchResults);
 
   useEffect(() => {
     if (user) {
@@ -17,7 +18,7 @@ export default function ReadingShelves() {
     }
   }, [user]);
 
-  if (!user || loading || editions === null || editions.length === 0 || searchQuery) {
+  if (!user || loading || editions === null || editions.length === 0 || searchQuery || hasSearchResults) {
     return null;
   }
 

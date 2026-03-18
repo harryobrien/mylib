@@ -432,7 +432,7 @@ async fn list_user_editions(
     })))
 }
 
-fn extract_session_token(headers: &HeaderMap) -> Option<String> {
+pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {
     let cookie_header = headers.get("cookie")?.to_str().ok()?;
     for part in cookie_header.split(';') {
         let part = part.trim();

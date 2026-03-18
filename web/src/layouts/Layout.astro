@@ -171,7 +171,41 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
     /* Account */
     .account-text { font-size: 14px; color: #5a5549; }
     .account-link { font-size: 14px; color: #5a5549; text-decoration: underline; text-underline-offset: 2px; }
+    .account-link-active { color: #b8860b; font-weight: 500; }
     .account-sep { color: #a9a49a; }
+
+    /* Editable fields */
+    .editable-field { position: relative; }
+    .edit-pencil {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #b8860b;
+      padding: 0 4px;
+      margin-left: 4px;
+      opacity: 0.7;
+      vertical-align: middle;
+    }
+    .edit-pencil:hover { opacity: 1; }
+    .editable-placeholder {
+      color: #a9a49a;
+      font-style: italic;
+    }
+    .editable-field-editing input,
+    .editable-field-editing textarea {
+      font-family: inherit;
+      font-size: inherit;
+      padding: 4px 8px;
+      border: 1px solid #b8860b;
+      background: #fffef9;
+      width: 100%;
+      max-width: 400px;
+    }
+    .editable-field-editing textarea {
+      max-width: 100%;
+      resize: vertical;
+    }
 
     /* Reading status buttons */
     .status-btns { display: inline-flex; gap: 4px; margin-left: 8px; }

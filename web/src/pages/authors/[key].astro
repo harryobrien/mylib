@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import EditableField from '../../components/EditableField.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
@@ -34,23 +35,56 @@ function esc(str) {
 ---
 
 <Layout title={author.name} description={ogDescription} type="profile" showPortal>
-  <h2 class="page-title">{esc(author.name)}</h2>
-  {author.fuller_name && author.fuller_name !== author.name && (
-    <p class="fuller-name">{esc(author.fuller_name)}</p>
-  )}
+  <EditableField
+    value={author.name}
+    field="name"
+    endpoint={`/authors/${key}`}
+    as="h2"
+    className="page-title"
+    client:only="react"
+  />
+  <EditableField
+    value={author.fuller_name || ''}
+    field="fuller_name"
+    endpoint={`/authors/${key}`}
+    as="p"
+    className="fuller-name"
+    placeholder="Add full name..."
+    client:only="react"
+  />
 
   <div class="meta">
-    {author.birth_date && <span>Born: {author.birth_date}</span>}
-    {author.birth_date && author.death_date && <span> · </span>}
-    {author.death_date && <span>Died: {author.death_date}</span>}
+    <EditableField
+      value={author.birth_date || ''}
+      field="birth_date"
+      endpoint={`/authors/${key}`}
+      label="Born: "
+      placeholder="Add date..."
+      client:only="react"
+    />
+    {(author.birth_date || author.death_date) && <span> · </span>}
+    <EditableField
+      value={author.death_date || ''}
+      field="death_date"
+      endpoint={`/authors/${key}`}
+      label="Died: "
+      placeholder="Add date..."
+      client:only="react"
+    />
   </div>
 
-  {author.bio && (
-    <section class="bio">
-      <h2>Biography</h2>
-      <p>{esc(author.bio)}</p>
-    </section>
-  )}
+  <section class="bio">
+    <h2>Biography</h2>
+    <EditableField
+      value={author.bio || ''}
+      field="bio"
+      endpoint={`/authors/${key}`}
+      as="p"
+      multiline
+      placeholder="Add biography..."
+      client:only="react"
+    />
+  </section>
 
   <section class="works">
     <h2>Works ({works.length})</h2>

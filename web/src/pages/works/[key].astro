@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ReadingStatus from '../../components/ReadingStatus.tsx';
+import EditableField from '../../components/EditableField.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
@@ -43,8 +44,23 @@ function esc(str) {
       />
     )}
     <div class="work-info">
-      <h2 class="page-title">{esc(work.title)}</h2>
-      {work.subtitle && <p class="subtitle">{esc(work.subtitle)}</p>}
+      <EditableField
+        value={work.title}
+        field="title"
+        endpoint={`/works/${key}`}
+        as="h2"
+        className="page-title"
+        client:only="react"
+      />
+      <EditableField
+        value={work.subtitle || ''}
+        field="subtitle"
+        endpoint={`/works/${key}`}
+        as="p"
+        className="subtitle"
+        placeholder="Add subtitle..."
+        client:only="react"
+      />
 
       {authors.length > 0 && (
         <div class="authors">
@@ -56,9 +72,16 @@ function esc(str) {
         </div>
       )}
 
-      {work.first_publish_date && (
-        <p class="meta">First published: {work.first_publish_date}</p>
-      )}
+      <EditableField
+        value={work.first_publish_date || ''}
+        field="first_publish_date"
+        endpoint={`/works/${key}`}
+        as="p"
+        className="meta"
+        label="First published: "
+        placeholder="Add date..."
+        client:only="react"
+      />
 
       {popularity?.ratings_count > 0 && (
         <div class="ratings">
@@ -77,12 +100,18 @@ function esc(str) {
     </div>
   </div>
 
-  {work.description && (
-    <section class="description">
-      <h2>Description</h2>
-      <p>{esc(work.description)}</p>
-    </section>
-  )}
+  <section class="description">
+    <h2>Description</h2>
+    <EditableField
+      value={work.description || ''}
+      field="description"
+      endpoint={`/works/${key}`}
+      as="p"
+      multiline
+      placeholder="Add description..."
+      client:only="react"
+    />
+  </section>
 
   <section class="editions">
     <h2>Editions ({editions.length})</h2>

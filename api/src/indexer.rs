@@ -286,3 +286,150 @@ fn extract_year(date: &Option<String>) -> Option<i64> {
             .and_then(|y| y.parse().ok())
     })
 }
+
+// --- Single document reindexing ---
+
+pub async fn reindex_work(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+    let Some(w) = db::get_work_for_indexing(pool, id).await? else {
+        return Ok(());
+    };
+
+    let mut writer = search.works.writer()?;
+
+    let term = tantivy::Term::from_field_i64(search.works.fields.id, id as i64);
+    writer.delete_term(term);
+
+    let year = extract_year(&w.first_publish_date);
+    let mut doc = tantivy::TantivyDocument::new();
+    doc.add_i64(search.works.fields.id, w.id as i64);
+    doc.add_text(search.works.fields.key, &w.key);
+    doc.add_text(search.works.fields.title, &w.title);
+    doc.add_text(
+        search.works.fields.title_ngram,
+        &generate_edge_ngrams(&w.title, 2, 8),
+    );
+    if let Some(ref s) = w.subtitle {
+        doc.add_text(search.works.fields.subtitle, s);
+    }
+    if let Some(ref d) = w.description {
+        doc.add_text(search.works.fields.description, d);
+    }
+    if let Some(ref s) = w.subjects {
+        doc.add_text(search.works.fields.subjects, s);
+    }
+    if let Some(ref a) = w.author_names {
+        let normalized = normalize_for_search(a);
+        doc.add_text(search.works.fields.author_names, &normalized);
+        doc.add_text(
+            search.works.fields.author_names_ngram,
+            &generate_edge_ngrams(&normalized, 2, 8),
+        );
+    }
+    if let Some(y) = year {
+        doc.add_i64(search.works.fields.first_publish_year, y);
+    }
+    if let Some(c) = w.cover_id {
+        doc.add_i64(search.works.fields.cover_id, c);
+    }
+    doc.add_f64(
+        search.works.fields.popularity,
+        w.popularity_score.unwrap_or(0.0),
+    );
+    if let Some(rc) = w.ratings_count {
+        doc.add_i64(search.works.fields.ratings_count, rc as i64);
+    }
+    if let Some(ra) = w.rating_avg {
+        doc.add_f64(search.works.fields.rating_avg, ra as f64);
+    }
+    writer.add_document(doc)?;
+    writer.commit()?;
+
+    Ok(())
+}
+
+pub async fn reindex_author(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+    let Some(a) = db::get_author_for_indexing(pool, id).await? else {
+        return Ok(());
+    };
+
+    let mut writer = search.authors.writer()?;
+
+    let term = tantivy::Term::from_field_i64(search.authors.fields.id, id as i64);
+    writer.delete_term(term);
+
+    let mut doc = tantivy::TantivyDocument::new();
+    doc.add_i64(search.authors.fields.id, a.id as i64);
+    doc.add_text(search.authors.fields.key, &a.key);
+    let normalized_name = normalize_for_search(&a.name);
+    doc.add_text(search.authors.fields.name, &normalized_name);
+    doc.add_text(
+        search.authors.fields.name_ngram,
+        &generate_edge_ngrams(&normalized_name, 2, 8),
+    );
+    if let Some(ref alt) = a.alternate_names {
+        doc.add_text(search.authors.fields.alternate_names, alt);
+    }
+    if let Some(ref bio) = a.bio {
+        doc.add_text(search.authors.fields.bio, bio);
+    }
+    doc.add_f64(
+        search.authors.fields.popularity,
+        a.popularity_score.unwrap_or(0.0),
+    );
+    writer.add_document(doc)?;
+    writer.commit()?;
+
+    Ok(())
+}
+
+pub async fn reindex_edition(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+    let Some(e) = db::get_edition_for_indexing(pool, id).await? else {
+        return Ok(());
+    };
+
+    let mut writer = search.editions.writer()?;
+
+    let term = tantivy::Term::from_field_i64(search.editions.fields.id, id as i64);
+    writer.delete_term(term);
+
+    let year = extract_year(&e.publish_date);
+    let mut doc = tantivy::TantivyDocument::new();
+    doc.add_i64(search.editions.fields.id, e.id as i64);
+    doc.add_text(search.editions.fields.key, &e.key);
+    doc.add_i64(search.editions.fields.work_id, e.work_id as i64);
+    doc.add_text(search.editions.fields.work_key, &e.work_key);
+    doc.add_text(search.editions.fields.title, &e.title);
+    doc.add_text(
+        search.editions.fields.title_ngram,
+        &generate_edge_ngrams(&e.title, 2, 8),
+    );
+    if let Some(ref s) = e.subtitle {
+        doc.add_text(search.editions.fields.subtitle, s);
+    }
+    if let Some(ref i) = e.isbns {
+        doc.add_text(search.editions.fields.isbns, i);
+    }
+    if let Some(ref p) = e.publishers {
+        doc.add_text(search.editions.fields.publishers, p);
+    }
+    if let Some(y) = year {
+        doc.add_i64(search.editions.fields.publish_year, y);
+    }
+    if let Some(c) = e.cover_id {
+        doc.add_i64(search.editions.fields.cover_id, c);
+    }
+    doc.add_f64(
+        search.editions.fields.popularity,
+        e.popularity_score.unwrap_or(0.0),
+    );
+    if let Some(rc) = e.ratings_count {
+        doc.add_i64(search.editions.fields.ratings_count, rc as i64);
+    }
+    if let Some(ra) = e.rating_avg {
+        doc.add_f64(search.editions.fields.rating_avg, ra as f64);
+    }
+    writer.add_document(doc)?;
+    writer.commit()?;
+
+    Ok(())
+}

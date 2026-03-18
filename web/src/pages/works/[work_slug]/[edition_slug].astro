@@ -1,6 +1,7 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import ReadingStatus from '../../../components/ReadingStatus.tsx';
+import EditableField from '../../../components/EditableField.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { work_slug, edition_slug } = Astro.params;
@@ -57,8 +58,23 @@ function esc(str) {
       <div class="work-cover-placeholder" />
     )}
     <div class="work-info">
-      <h2 class="page-title">{esc(edition.title)}</h2>
-      {edition.subtitle && <p class="subtitle">{esc(edition.subtitle)}</p>}
+      <EditableField
+        value={edition.title}
+        field="title"
+        endpoint={`/editions/${edition_slug}`}
+        as="h2"
+        className="page-title"
+        client:only="react"
+      />
+      <EditableField
+        value={edition.subtitle || ''}
+        field="subtitle"
+        endpoint={`/editions/${edition_slug}`}
+        as="p"
+        className="subtitle"
+        placeholder="Add subtitle..."
+        client:only="react"
+      />
 
       {authors.length > 0 && (
         <div class="authors">
@@ -72,9 +88,36 @@ function esc(str) {
 
       <div class="edition-details">
         {edition.publishers && <p class="meta"><strong>Publisher:</strong> {esc(edition.publishers)}</p>}
-        {edition.publish_date && <p class="meta"><strong>Published:</strong> {edition.publish_date}</p>}
-        {edition.physical_format && <p class="meta"><strong>Format:</strong> {edition.physical_format}</p>}
-        {edition.number_of_pages && <p class="meta"><strong>Pages:</strong> {edition.number_of_pages}</p>}
+        <EditableField
+          value={edition.publish_date || ''}
+          field="publish_date"
+          endpoint={`/editions/${edition_slug}`}
+          as="p"
+          className="meta"
+          label="Published: "
+          placeholder="Add date..."
+          client:only="react"
+        />
+        <EditableField
+          value={edition.physical_format || ''}
+          field="physical_format"
+          endpoint={`/editions/${edition_slug}`}
+          as="p"
+          className="meta"
+          label="Format: "
+          placeholder="Add format..."
+          client:only="react"
+        />
+        <EditableField
+          value={edition.number_of_pages?.toString() || ''}
+          field="number_of_pages"
+          endpoint={`/editions/${edition_slug}`}
+          as="p"
+          className="meta"
+          label="Pages: "
+          placeholder="Add page count..."
+          client:only="react"
+        />
         {edition.isbns?.length > 0 && (
           <p class="meta"><strong>ISBN:</strong> {edition.isbns.join(', ')}</p>
         )}

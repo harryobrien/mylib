@@ -14,7 +14,7 @@ export function clearSearch() {
   $triggerSearch.set($triggerSearch.get() + 1);
 }
 
-// User editions cache
+// User editions - shared via nanostore, fetched via SWR in components
 export interface Edition {
   slug: string;
   work_slug: string;
@@ -24,28 +24,3 @@ export interface Edition {
 }
 
 export const $userEditions = atom<Edition[] | null>(null);
-export const $userEditionsLoading = atom(false);
-
-export async function loadUserEditions(apiBase: string, force = false) {
-  if ($userEditions.get() !== null && !force) return;
-  if ($userEditionsLoading.get()) return;
-
-  $userEditionsLoading.set(true);
-  try {
-    const res = await fetch(`${apiBase}/auth/editions`, { credentials: 'include' });
-    if (res.ok) {
-      const data = await res.json();
-      $userEditions.set(data.editions || []);
-    } else {
-      $userEditions.set([]);
-    }
-  } catch {
-    $userEditions.set([]);
-  } finally {
-    $userEditionsLoading.set(false);
-  }
-}
-
-export function invalidateUserEditions() {
-  $userEditions.set(null);
-}

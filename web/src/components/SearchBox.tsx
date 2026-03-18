@@ -176,6 +176,7 @@ export default function SearchBox() {
         setGrouped(emptyGrouped);
         setStats('');
         saveState('', emptyGrouped, '');
+        $hasSearchResults.set(false);
       }
     }
   }, [trigger]);
@@ -187,12 +188,6 @@ export default function SearchBox() {
       search(query);
     }
   }, []);
-
-  useEffect(() => {
-    const hasResults = !!(grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
-      grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0);
-    $hasSearchResults.set(hasResults);
-  }, [grouped]);
 
   function saveState(q: string, g: GroupedResults, s: string): void {
     try {
@@ -218,6 +213,7 @@ export default function SearchBox() {
       setGrouped(emptyGrouped);
       setStats('');
       saveState('', emptyGrouped, '');
+      $hasSearchResults.set(false);
       return;
     }
 
@@ -240,6 +236,7 @@ export default function SearchBox() {
       setStats(statsText);
       setGrouped(g);
       saveState(q, g, statsText);
+      $hasSearchResults.set(total > 0);
     } catch (err) {
       setStats(`Error: ${(err as Error).message}`);
     }
@@ -258,6 +255,7 @@ export default function SearchBox() {
     setGrouped(emptyGrouped);
     setStats('');
     saveState('', emptyGrouped, '');
+    $hasSearchResults.set(false);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {

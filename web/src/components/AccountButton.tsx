@@ -1,19 +1,18 @@
-import { useEffect } from 'react';
+import useSWR, { mutate } from 'swr';
 import { useStore } from '@nanostores/react';
-import { $user, $userLoading, loadUser, clearUser } from '../stores/user';
-import { invalidateUserEditions } from '../stores/search';
+import { $user, clearUser } from '../stores/user';
+import { $userEditions } from '../stores/search';
 import { $editingMode, toggleEditingMode } from '../stores/editing';
+import { fetchUser } from '../lib/fetchers';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function AccountButton() {
-  const user = useStore($user);
-  const loading = useStore($userLoading);
+  const { data: user, isLoading: loading } = useSWR('user', fetchUser, {
+    onSuccess: (data) => $user.set(data),
+    revalidateOnFocus: false,
+  });
   const editing = useStore($editingMode);
-
-  useEffect(() => {
-    loadUser(API_BASE);
-  }, []);
 
   async function handleLogout(e: React.MouseEvent) {
     e.preventDefault();
@@ -22,7 +21,9 @@ export default function AccountButton() {
       credentials: 'include',
     });
     clearUser();
-    invalidateUserEditions();
+    $userEditions.set(null);
+    mutate('user', null, false);
+    mutate('userEditions', [], false);
   }
 
   if (loading) {

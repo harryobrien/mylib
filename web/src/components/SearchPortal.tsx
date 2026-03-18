@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { MouseEvent } from 'react';
 import { useStore } from '@nanostores/react';
 import { $searchQuery, setSearch } from '../stores/search';
@@ -7,15 +7,14 @@ const STORAGE_KEY = 'mylib_search';
 const HISTORY_KEY = 'mylib_history';
 
 export default function SearchPortal() {
-  const [history, setHistory] = useState<string[]>([]);
-  const currentQuery = useStore($searchQuery);
-
-  useEffect(() => {
+  const [history, setHistory] = useState<string[]>(() => {
     try {
-      const hist: string[] = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
-      setHistory(hist);
-    } catch {}
-  }, []);
+      return JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const currentQuery = useStore($searchQuery);
 
   function handleClick(e: MouseEvent<HTMLAnchorElement>, query: string): void {
     try {

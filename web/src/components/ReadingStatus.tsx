@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import useSWR, { mutate } from 'swr';
 import { useStore } from '@nanostores/react';
-import { $user, $userLoading } from '../stores/user';
-import { $userEditions, loadUserEditions, invalidateUserEditions } from '../stores/search';
+import { $user } from '../stores/user';
+import { $userEditions } from '../stores/search';
+import { fetchUserEditions } from '../lib/fetchers';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -13,22 +14,17 @@ type Status = 'reading' | 'want_to_read' | 'finished' | 'did_not_finish' | null;
 
 export default function ReadingStatus({ slug }: Props) {
   const user = useStore($user);
-  const userLoading = useStore($userLoading);
-  const editions = useStore($userEditions);
-  const [status, setStatus] = useState<Status>(null);
 
-  useEffect(() => {
-    if (user) {
-      loadUserEditions(API_BASE);
+  const { data: editions, isLoading } = useSWR(
+    user ? 'userEditions' : null,
+    fetchUserEditions,
+    {
+      onSuccess: (data) => $userEditions.set(data),
+      revalidateOnFocus: false,
     }
-  }, [user]);
+  );
 
-  useEffect(() => {
-    if (editions) {
-      const edition = editions.find(e => e.slug === slug);
-      setStatus(edition?.status as Status || null);
-    }
-  }, [editions, slug]);
+  const status = (editions?.find(e => e.slug === slug)?.status as Status) ?? null;
 
   async function setEditionStatus(newStatus: Status) {
     if (!newStatus) {
@@ -44,13 +40,10 @@ export default function ReadingStatus({ slug }: Props) {
         body: JSON.stringify({ status: newStatus }),
       });
     }
-    setStatus(newStatus);
-    invalidateUserEditions();
-    loadUserEditions(API_BASE, true);
+    mutate('userEditions');
   }
 
-  // Not logged in or still loading
-  if (userLoading || !user) {
+  if (isLoading || !user) {
     return null;
   }
 

@@ -1,24 +1,24 @@
-import { useEffect } from 'react';
+import useSWR from 'swr';
 import { useStore } from '@nanostores/react';
 import { $user } from '../stores/user';
-import { $searchQuery, $hasSearchResults, $userEditions, $userEditionsLoading, loadUserEditions, type Edition } from '../stores/search';
-
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+import { $searchQuery, $hasSearchResults, $userEditions, type Edition } from '../stores/search';
+import { fetchUserEditions } from '../lib/fetchers';
 
 export default function ReadingShelves() {
   const user = useStore($user);
-  const editions = useStore($userEditions);
-  const loading = useStore($userEditionsLoading);
   const searchQuery = useStore($searchQuery);
   const hasSearchResults = useStore($hasSearchResults);
 
-  useEffect(() => {
-    if (user) {
-      loadUserEditions(API_BASE);
+  const { data: editions, isLoading } = useSWR(
+    user ? 'userEditions' : null,
+    fetchUserEditions,
+    {
+      onSuccess: (data) => $userEditions.set(data),
+      revalidateOnFocus: false,
     }
-  }, [user]);
+  );
 
-  if (!user || loading || editions === null || editions.length === 0 || searchQuery || hasSearchResults) {
+  if (!user || isLoading || !editions || editions.length === 0 || searchQuery || hasSearchResults) {
     return null;
   }
 

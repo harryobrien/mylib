@@ -21,6 +21,10 @@ export interface Edition {
   title: string;
   status: string;
   cover_id: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  current_page: number | null;
+  number_of_pages: number | null;
 }
 
 export const $userEditions = atom<Edition[] | null>(null);

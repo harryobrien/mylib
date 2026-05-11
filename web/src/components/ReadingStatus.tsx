@@ -33,11 +33,15 @@ export default function ReadingStatus({ slug }: Props) {
         credentials: 'include',
       });
     } else {
+      const today = new Date().toISOString().slice(0, 10);
+      const body: Record<string, string> = { status: newStatus };
+      if (newStatus === 'reading') body.started_at = today;
+      if (newStatus === 'finished') body.finished_at = today;
       await fetch(`${API_BASE}/auth/editions/${slug}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(body),
       });
     }
     mutate('userEditions');

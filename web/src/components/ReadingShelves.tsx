@@ -41,7 +41,7 @@ function Shelf({ title, editions }: { title: string; editions: Edition[] }) {
       <div className="shelf-title">{title}</div>
       <div className="shelf-books">
         {editions.map(e => (
-          <a key={e.slug} href={`/works/${e.work_slug}`} className="shelf-book">
+          <a key={e.slug} href={`/works/${e.work_slug}/${e.slug}`} className="shelf-book">
             {e.cover_id ? (
               <img
                 src={`https://covers.openlibrary.org/b/id/${e.cover_id}-M.jpg`}
@@ -52,6 +52,9 @@ function Shelf({ title, editions }: { title: string; editions: Edition[] }) {
               <div className="shelf-cover-placeholder" />
             )}
             <div className="shelf-book-title">{e.title}</div>
+            {e.status === 'reading' && e.current_page && e.number_of_pages ? (
+              <div className="shelf-book-progress">p.{e.current_page}/{e.number_of_pages}</div>
+            ) : null}
           </a>
         ))}
       </div>

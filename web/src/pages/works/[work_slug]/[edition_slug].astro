@@ -4,6 +4,7 @@ import ReadingStatus from '../../../components/ReadingStatus.tsx';
 import EditableField from '../../../components/EditableField.tsx';
 import ReviewForm from '../../../components/ReviewForm.tsx';
 import ReviewList from '../../../components/ReviewList.tsx';
+import ReadingProgress from '../../../components/ReadingProgress.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { work_slug, edition_slug } = Astro.params;
@@ -135,6 +136,7 @@ function esc(str) {
       <div class="reading-status-container">
         <ReadingStatus slug={edition_slug} client:only="react" />
       </div>
+      <ReadingProgress slug={edition_slug} client:only="react" />
       <ReviewForm editionSlug={edition_slug} client:only="react" />
     </div>
   </div>

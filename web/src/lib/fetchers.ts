@@ -47,3 +47,16 @@ export async function fetchUserReview(slug: string): Promise<Review | null> {
   const data = await res.json();
   return data.review || null;
 }
+
+export async function updateProgress(
+  slug: string,
+  data: { current_page?: number; started_at?: string; finished_at?: string },
+): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/editions/${slug}/progress`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return res.ok;
+}

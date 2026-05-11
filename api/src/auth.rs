@@ -8,7 +8,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use chrono::{Duration, Utc};
@@ -30,6 +30,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/auth/editions/{slug}/review",
             get(get_user_review).put(upsert_review).delete(delete_review),
+        )
+        .route(
+            "/auth/editions/{slug}/progress",
+            patch(update_progress),
         )
 }
 
@@ -326,6 +330,9 @@ async fn get_user_id(state: &AppState, headers: &HeaderMap) -> Result<i32, AuthE
 #[derive(Deserialize)]
 pub struct SetEditionStatusRequest {
     status: String,
+    started_at: Option<chrono::NaiveDate>,
+    finished_at: Option<chrono::NaiveDate>,
+    current_page: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -349,27 +356,50 @@ async fn set_edition_status(
         return Err(AuthError::InvalidToken);
     }
 
-    // Verify edition exists
-    let exists = sqlx::query_scalar::<_, i32>("SELECT id FROM editions WHERE id = $1")
-        .bind(edition_id)
-        .fetch_optional(&state.db)
-        .await?
-        .is_some();
+    let edition = sqlx::query_as::<_, (i32, Option<i32>)>(
+        "SELECT id, number_of_pages FROM editions WHERE id = $1",
+    )
+    .bind(edition_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AuthError::InvalidToken)?;
 
-    if !exists {
-        return Err(AuthError::InvalidToken);
-    }
+    let today = Utc::now().date_naive();
+    let number_of_pages = edition.1;
+
+    let started_at = match req.status.as_str() {
+        "reading" | "finished" => req.started_at.or(Some(today)),
+        _ => req.started_at,
+    };
+
+    let finished_at = match req.status.as_str() {
+        "finished" => req.finished_at.or(Some(today)),
+        _ => req.finished_at,
+    };
+
+    let current_page = match req.status.as_str() {
+        "finished" => req.current_page.or(number_of_pages),
+        _ => req.current_page,
+    };
 
     sqlx::query(
         r#"
-        INSERT INTO user_editions (user_id, edition_id, status)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id, edition_id) DO UPDATE SET status = $3, created_at = NOW()
+        INSERT INTO user_editions (user_id, edition_id, status, started_at, finished_at, current_page)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, edition_id) DO UPDATE SET
+            status = $3,
+            started_at = COALESCE($4, user_editions.started_at),
+            finished_at = $5,
+            current_page = COALESCE($6, user_editions.current_page),
+            created_at = NOW()
         "#,
     )
     .bind(user_id)
     .bind(edition_id)
     .bind(&req.status)
+    .bind(started_at)
+    .bind(finished_at)
+    .bind(current_page)
     .execute(&state.db)
     .await?;
 
@@ -402,9 +432,10 @@ async fn list_user_editions(
 ) -> Result<Json<serde_json::Value>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let editions = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>)>(
+    let editions = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>, Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, Option<i32>, Option<i32>)>(
         r#"
-        SELECT e.id, e.title, ue.status, e.work_id, ec.cover_id
+        SELECT e.id, e.title, ue.status, e.work_id, ec.cover_id,
+               ue.started_at, ue.finished_at, ue.current_page, e.number_of_pages
         FROM user_editions ue
         JOIN editions e ON ue.edition_id = e.id
         LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
@@ -418,14 +449,18 @@ async fn list_user_editions(
 
     let editions: Vec<_> = editions
         .into_iter()
-        .map(|(id, title, status, work_id, cover_id)| {
+        .map(|(id, title, status, work_id, cover_id, started_at, finished_at, current_page, number_of_pages)| {
             serde_json::json!({
                 "slug": base36::encode(id as i64),
                 "edition_id": id,
                 "work_slug": base36::encode(work_id as i64),
                 "title": title,
                 "status": status,
-                "cover_id": cover_id
+                "cover_id": cover_id,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "current_page": current_page,
+                "number_of_pages": number_of_pages,
             })
         })
         .collect();
@@ -434,6 +469,52 @@ async fn list_user_editions(
         "success": true,
         "editions": editions
     })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProgressRequest {
+    started_at: Option<chrono::NaiveDate>,
+    finished_at: Option<chrono::NaiveDate>,
+    current_page: Option<i32>,
+}
+
+async fn update_progress(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Json(req): Json<UpdateProgressRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    if let Some(page) = req.current_page {
+        if page < 0 {
+            return Err(AuthError::InvalidToken);
+        }
+    }
+
+    let rows = sqlx::query(
+        r#"
+        UPDATE user_editions SET
+            started_at = COALESCE($3, started_at),
+            finished_at = COALESCE($4, finished_at),
+            current_page = COALESCE($5, current_page)
+        WHERE user_id = $1 AND edition_id = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(edition_id)
+    .bind(req.started_at)
+    .bind(req.finished_at)
+    .bind(req.current_page)
+    .execute(&state.db)
+    .await?;
+
+    if rows.rows_affected() == 0 {
+        return Err(AuthError::InvalidToken);
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 const MAX_REVIEW_TEXT: usize = 10000;

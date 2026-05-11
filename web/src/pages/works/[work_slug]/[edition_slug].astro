@@ -2,6 +2,8 @@
 import Layout from '../../../layouts/Layout.astro';
 import ReadingStatus from '../../../components/ReadingStatus.tsx';
 import EditableField from '../../../components/EditableField.tsx';
+import ReviewForm from '../../../components/ReviewForm.tsx';
+import ReviewList from '../../../components/ReviewList.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { work_slug, edition_slug } = Astro.params;
@@ -133,6 +135,7 @@ function esc(str) {
       <div class="reading-status-container">
         <ReadingStatus slug={edition_slug} client:only="react" />
       </div>
+      <ReviewForm editionSlug={edition_slug} client:only="react" />
     </div>
   </div>
 
@@ -142,6 +145,10 @@ function esc(str) {
       <p>{esc(work.description)}</p>
     </section>
   )}
+
+  <section class="reviews-section">
+    <ReviewList editionSlug={edition_slug} client:only="react" />
+  </section>
 
   <section class="editions">
     <h2>

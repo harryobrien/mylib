@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import ReadingStatus from '../../components/ReadingStatus.tsx';
 import EditableField from '../../components/EditableField.tsx';
+import ReviewList from '../../components/ReviewList.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
@@ -111,6 +112,10 @@ function esc(str) {
       placeholder="Add description..."
       client:only="react"
     />
+  </section>
+
+  <section class="reviews-section">
+    <ReviewList workSlug={key} client:only="react" />
   </section>
 
   <section class="editions">

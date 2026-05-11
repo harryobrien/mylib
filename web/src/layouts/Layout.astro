@@ -275,6 +275,106 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
     }
+
+    .review-form { margin-top: 15px; }
+    .review-label {
+      font-size: 13px;
+      color: #5a5549;
+      margin-right: 8px;
+    }
+    .stars-display, .stars-input { display: inline-flex; gap: 1px; }
+    .star {
+      font-size: 18px;
+      color: #d9d4c8;
+      background: none;
+      border: none;
+      cursor: default;
+      padding: 0;
+      line-height: 1;
+      font-family: inherit;
+    }
+    .star.filled { color: #b8860b; }
+    .stars-input .star {
+      cursor: pointer;
+      transition: color 0.1s;
+    }
+    .stars-input .star:hover { color: #b8860b; }
+    .review-quick, .review-yours { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .review-text-preview {
+      width: 100%;
+      font-size: 14px;
+      color: #3a3530;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .review-edit-btn, .review-cancel-btn, .review-delete-btn, .review-submit-btn {
+      font-size: 12px;
+      padding: 3px 10px;
+      border: 1px solid #d9d4c8;
+      background: #faf6ed;
+      color: #5a5549;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .review-edit-btn { margin-left: 8px; }
+    .review-submit-btn {
+      border-color: #5a5549;
+      background: #5a5549;
+      color: #fff;
+    }
+    .review-submit-btn:hover { background: #3a3530; }
+    .review-submit-btn:disabled { opacity: 0.5; cursor: default; }
+    .review-delete-btn {
+      border-color: #a65d57;
+      color: #a65d57;
+      margin-left: auto;
+    }
+    .review-delete-btn:hover { background: #f5ebe9; }
+    .review-cancel-btn:hover, .review-edit-btn:hover { border-color: #5a5549; }
+    .review-textarea {
+      display: block;
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px;
+      border: 1px solid #d9d4c8;
+      background: #fffef9;
+      resize: vertical;
+      margin: 8px 0;
+      line-height: 1.5;
+    }
+    .review-textarea:focus { border-color: #b8860b; outline: none; }
+    .review-editing { margin-top: 4px; }
+    .review-actions { display: flex; gap: 6px; align-items: center; }
+    .review-list { margin-bottom: 30px; }
+    .review-item {
+      padding: 12px 0;
+      border-bottom: 1px solid #e8e4d9;
+    }
+    .review-item:last-child { border-bottom: none; }
+    .review-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .review-edition {
+      font-size: 13px;
+      color: #8a8477;
+      font-style: italic;
+    }
+    .review-date {
+      font-size: 12px;
+      color: #a9a49a;
+      margin-left: auto;
+    }
+    .review-body {
+      font-size: 14px;
+      color: #3a3530;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+    .reviews-section { margin-bottom: 10px; }
   </style>
 </head>
 <body>

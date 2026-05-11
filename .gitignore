@@ -6,3 +6,5 @@ index/
 # Added by cargo
 
 /target
+
+schema.sql

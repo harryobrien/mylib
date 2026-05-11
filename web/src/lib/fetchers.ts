@@ -16,3 +16,34 @@ export async function fetchUserEditions(): Promise<Edition[]> {
   const data = await res.json();
   return data.editions || [];
 }
+
+export interface Review {
+  user_id: number;
+  rating: number;
+  review_text: string | null;
+  edition_slug?: string;
+  edition_title?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchEditionReviews(slug: string): Promise<Review[]> {
+  const res = await fetch(`${API_BASE}/editions/${slug}/reviews`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.reviews || [];
+}
+
+export async function fetchWorkReviews(slug: string): Promise<Review[]> {
+  const res = await fetch(`${API_BASE}/works/${slug}/reviews`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.reviews || [];
+}
+
+export async function fetchUserReview(slug: string): Promise<Review | null> {
+  const res = await fetch(`${API_BASE}/auth/editions/${slug}/review`, { credentials: 'include' });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.review || null;
+}

@@ -27,6 +27,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/auth/editions", get(list_user_editions))
         .route("/auth/editions/{slug}", put(set_edition_status))
         .route("/auth/editions/{slug}", delete(remove_edition))
+        .route(
+            "/auth/editions/{slug}/review",
+            get(get_user_review).put(upsert_review).delete(delete_review),
+        )
 }
 
 fn generate_token() -> String {
@@ -430,6 +434,114 @@ async fn list_user_editions(
         "success": true,
         "editions": editions
     })))
+}
+
+const MAX_REVIEW_TEXT: usize = 10000;
+
+#[derive(Deserialize)]
+pub struct UpsertReviewRequest {
+    rating: i16,
+    review_text: Option<String>,
+}
+
+async fn get_user_review(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    let review = sqlx::query_as::<_, (i16, Option<String>, chrono::DateTime<Utc>, chrono::DateTime<Utc>)>(
+        "SELECT rating, review_text, created_at, updated_at FROM user_reviews WHERE user_id = $1 AND edition_id = $2",
+    )
+    .bind(user_id)
+    .bind(edition_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match review {
+        Some((rating, review_text, created_at, updated_at)) => Ok(Json(serde_json::json!({
+            "success": true,
+            "review": {
+                "rating": rating,
+                "review_text": review_text,
+                "created_at": created_at,
+                "updated_at": updated_at,
+            }
+        }))),
+        None => Ok(Json(serde_json::json!({
+            "success": true,
+            "review": null
+        }))),
+    }
+}
+
+async fn upsert_review(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+    Json(req): Json<UpsertReviewRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    if req.rating < 1 || req.rating > 5 {
+        return Err(AuthError::InvalidToken);
+    }
+
+    if let Some(ref text) = req.review_text {
+        if text.len() > MAX_REVIEW_TEXT {
+            return Err(AuthError::InvalidToken);
+        }
+    }
+
+    let exists = sqlx::query_scalar::<_, i32>("SELECT id FROM editions WHERE id = $1")
+        .bind(edition_id)
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+
+    if !exists {
+        return Err(AuthError::InvalidToken);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_reviews (user_id, edition_id, rating, review_text)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, edition_id) DO UPDATE SET
+            rating = $3, review_text = $4, updated_at = NOW()
+        "#,
+    )
+    .bind(user_id)
+    .bind(edition_id)
+    .bind(req.rating)
+    .bind(&req.review_text)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "rating": req.rating
+    })))
+}
+
+async fn delete_review(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    sqlx::query("DELETE FROM user_reviews WHERE user_id = $1 AND edition_id = $2")
+        .bind(user_id)
+        .bind(edition_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {

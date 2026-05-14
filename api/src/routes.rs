@@ -1287,10 +1287,11 @@ async fn get_popular_works(
             WHERE e2.work_id = w.id LIMIT 1
         ) ec ON true
         WHERE wp.ratings_count > 0
-        ORDER BY compute_popularity_score(
-            wp.ratings_count, wp.ratings_sum::integer,
-            wp.want_to_read, wp.currently_reading, wp.already_read
-        ) DESC
+        ORDER BY (wp.ratings_sum / NULLIF(wp.ratings_count, 0)::double precision
+            * ln((1 + wp.ratings_count)::double precision)
+            + ln((1 + wp.already_read)::double precision) * 2.0
+            + ln((1 + wp.want_to_read)::double precision) * 0.5
+            + ln((1 + wp.currently_reading)::double precision)) DESC
         LIMIT 20
         "#,
     )

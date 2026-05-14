@@ -41,7 +41,7 @@ const ogDescription = work.description
   : authorList ? `By ${authorList}` : undefined;
 
 // Cache for 1 hour, stale-while-revalidate for 1 day
-Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
 
 function esc(str) {
   if (!str) return '';

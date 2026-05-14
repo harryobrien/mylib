@@ -20,7 +20,7 @@ try {
   if (listRes.ok) recentLists = await listRes.json();
 } catch {}
 
-Astro.response.headers.set('Cache-Control', 'public, no-cache, s-maxage=300, stale-while-revalidate=3600');
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600');
 ---
 
 <Layout title="mylib" description="Curate your own library" showPortal>

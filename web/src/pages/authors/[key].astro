@@ -22,7 +22,7 @@ try {
 } catch (e) {}
 
 // Cache for 1 hour, stale-while-revalidate for 1 day
-Astro.response.headers.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+Astro.response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
 
 const ogDescription = author.bio
   ? author.bio.slice(0, 200) + (author.bio.length > 200 ? '...' : '')

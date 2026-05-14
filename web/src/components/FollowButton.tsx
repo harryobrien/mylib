@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
-import { useStore } from '@nanostores/react';
 import { $user } from '../stores/user';
-import { fetchFollowState, followUser, unfollowUser } from '../lib/fetchers';
+import { fetchUser, fetchFollowState, followUser, unfollowUser } from '../lib/fetchers';
 
 interface Props {
   username: string;
 }
 
 export default function FollowButton({ username }: Props) {
-  const user = useStore($user);
+  const { data: user } = useSWR('user', fetchUser, {
+    onSuccess: (data) => $user.set(data),
+    revalidateOnFocus: false,
+  });
   const [loading, setLoading] = useState(false);
 
   const { data: following } = useSWR(

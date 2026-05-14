@@ -12,6 +12,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         navigateFallback: null,
+        navigateFallbackDenylist: [/.*/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/covers\.openlibrary\.org\/.*/i,

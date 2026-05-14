@@ -3,16 +3,7 @@ import { useStore } from '@nanostores/react';
 import { $user } from '../stores/user';
 import { $searchQuery, $hasSearchResults } from '../stores/search';
 import { fetchFeed, type FeedItem } from '../lib/fetchers';
-
-function Stars({ rating }: { rating: number }) {
-  return (
-    <span className="stars-display">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <span key={s} className={s <= rating ? 'star filled' : 'star'}>★</span>
-      ))}
-    </span>
-  );
-}
+import { StarsDisplay } from './Stars';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -69,7 +60,7 @@ export default function FollowingFeed() {
                 </a>
               </div>
               <div className="feed-rating">
-                <Stars rating={item.rating} />
+                <StarsDisplay rating={item.rating} />
                 <span className="feed-date">{formatDate(item.updated_at)}</span>
               </div>
               {item.review_text && (

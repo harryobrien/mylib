@@ -3,6 +3,7 @@ import useSWR, { mutate } from 'swr';
 import { useStore } from '@nanostores/react';
 import { $user } from '../stores/user';
 import { fetchUserReview } from '../lib/fetchers';
+import { StarsDisplay, StarsInput } from './Stars';
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -25,7 +26,6 @@ export default function ReviewForm({ editionSlug }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   const hasReview = existingReview != null;
-  const displayRating = hoverRating || rating || existingReview?.rating || 0;
 
   function startEditing() {
     setRating(existingReview?.rating || 0);
@@ -79,11 +79,7 @@ export default function ReviewForm({ editionSlug }: Props) {
       <div className="review-form">
         <div className="review-yours">
           <span className="review-label">Your rating</span>
-          <span className="stars-display">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <span key={s} className={s <= existingReview.rating ? 'star filled' : 'star'}>★</span>
-            ))}
-          </span>
+          <StarsDisplay rating={existingReview.rating} />
           {existingReview.review_text && (
             <p className="review-text-preview">{existingReview.review_text}</p>
           )}
@@ -98,23 +94,12 @@ export default function ReviewForm({ editionSlug }: Props) {
       <div className="review-form">
         <div className="review-quick">
           <span className="review-label">Rate this edition</span>
-          <span className="stars-input">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button
-                key={s}
-                className={s <= displayRating ? 'star filled' : 'star'}
-                onMouseEnter={() => setHoverRating(s)}
-                onMouseLeave={() => setHoverRating(0)}
-                onClick={() => {
-                  setRating(s);
-                  startEditing();
-                  setRating(s);
-                }}
-              >
-                ★
-              </button>
-            ))}
-          </span>
+          <StarsInput
+            value={0}
+            hoverValue={hoverRating}
+            onHover={setHoverRating}
+            onSelect={(v) => { setRating(v); startEditing(); setRating(v); }}
+          />
         </div>
       </div>
     );
@@ -124,19 +109,12 @@ export default function ReviewForm({ editionSlug }: Props) {
     <div className="review-form">
       <div className="review-editing">
         <span className="review-label">{hasReview ? 'Edit your review' : 'Write a review'}</span>
-        <span className="stars-input">
-          {[1, 2, 3, 4, 5].map((s) => (
-            <button
-              key={s}
-              className={s <= displayRating ? 'star filled' : 'star'}
-              onMouseEnter={() => setHoverRating(s)}
-              onMouseLeave={() => setHoverRating(0)}
-              onClick={() => setRating(s)}
-            >
-              ★
-            </button>
-          ))}
-        </span>
+        <StarsInput
+          value={rating}
+          hoverValue={hoverRating}
+          onHover={setHoverRating}
+          onSelect={setRating}
+        />
         <textarea
           className="review-textarea"
           value={reviewText}

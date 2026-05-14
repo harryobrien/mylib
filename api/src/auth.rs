@@ -97,7 +97,7 @@ pub struct StatusChangeResponse {
 #[derive(Serialize)]
 pub struct RatingChangeResponse {
     success: bool,
-    rating: i16,
+    rating: f32,
 }
 
 #[derive(Serialize)]
@@ -122,7 +122,7 @@ pub struct UserEditionsResponse {
 
 #[derive(Serialize)]
 pub struct ReviewDetail {
-    rating: i16,
+    rating: f32,
     review_text: Option<String>,
     created_at: chrono::DateTime<Utc>,
     updated_at: chrono::DateTime<Utc>,
@@ -154,7 +154,7 @@ pub struct FollowingListResponse {
 pub struct FeedItem {
     username: String,
     display_name: Option<String>,
-    rating: i16,
+    rating: f32,
     review_text: Option<String>,
     edition_slug: String,
     edition_title: String,
@@ -653,7 +653,7 @@ const MAX_REVIEW_TEXT: usize = 10000;
 
 #[derive(Deserialize)]
 pub struct UpsertReviewRequest {
-    rating: i16,
+    rating: f32,
     review_text: Option<String>,
 }
 
@@ -665,7 +665,7 @@ async fn get_user_review(
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    let review = sqlx::query_as::<_, (i16, Option<String>, chrono::DateTime<Utc>, chrono::DateTime<Utc>)>(
+    let review = sqlx::query_as::<_, (f32, Option<String>, chrono::DateTime<Utc>, chrono::DateTime<Utc>)>(
         "SELECT rating, review_text, created_at, updated_at FROM user_reviews WHERE user_id = $1 AND edition_id = $2",
     )
     .bind(user_id)
@@ -692,7 +692,7 @@ async fn upsert_review(
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    if req.rating < 1 || req.rating > 5 {
+    if req.rating < 1.0 || req.rating > 5.0 || (req.rating * 4.0).fract().abs() > f32::EPSILON {
         return Err(AuthError::InvalidToken);
     }
 
@@ -1119,7 +1119,7 @@ async fn get_feed(
 ) -> Result<Json<FeedResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let rows = sqlx::query_as::<_, (String, Option<String>, i16, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (String, Option<String>, f32, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
         r#"
         SELECT u.username, u.display_name, ur.rating, ur.review_text,
                ur.edition_id, e.title, e.work_id, ec.cover_id, ur.updated_at

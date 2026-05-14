@@ -21,7 +21,7 @@ struct ReviewItem {
     user_id: i32,
     username: String,
     display_name: Option<String>,
-    rating: i16,
+    rating: f32,
     review_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     edition_slug: Option<String>,
@@ -40,7 +40,7 @@ struct ReviewsResponse {
 struct ProfileReviewItem {
     edition_slug: String,
     work_slug: String,
-    rating: i16,
+    rating: f32,
     review_text: Option<String>,
     edition_title: String,
     created_at: chrono::DateTime<chrono::Utc>,
@@ -747,7 +747,7 @@ async fn get_edition_reviews(
 ) -> Result<Json<ReviewsResponse>, AppError> {
     let edition_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i16, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, String, Option<String>, f32, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.rating, ur.review_text,
                ur.created_at, ur.updated_at
@@ -781,7 +781,7 @@ async fn get_work_reviews(
 ) -> Result<Json<ReviewsResponse>, AppError> {
     let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i32, f32, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.edition_id, ur.rating,
                ur.review_text, e.title, ur.created_at, ur.updated_at
@@ -853,7 +853,7 @@ async fn get_user_profile(
         }
     }
 
-    let rows = sqlx::query_as::<_, (i32, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, i32, f32, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.edition_id, e.work_id, ur.rating, ur.review_text, e.title,
                ur.created_at, ur.updated_at

@@ -1,19 +1,10 @@
 import useSWR from 'swr';
 import { fetchEditionReviews, fetchWorkReviews, type Review } from '../lib/fetchers';
+import { StarsDisplay } from './Stars';
 
 interface Props {
   editionSlug?: string;
   workSlug?: string;
-}
-
-function Stars({ rating }: { rating: number }) {
-  return (
-    <span className="stars-display">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <span key={s} className={s <= rating ? 'star filled' : 'star'}>★</span>
-      ))}
-    </span>
-  );
 }
 
 function formatDate(iso: string): string {
@@ -54,7 +45,7 @@ export default function ReviewList({ editionSlug, workSlug }: Props) {
                 {r.display_name || r.username}
               </a>
             )}
-            <Stars rating={r.rating} />
+            <StarsDisplay rating={r.rating} />
             {r.edition_title && (
               <span className="review-edition">{r.edition_title}</span>
             )}

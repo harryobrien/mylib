@@ -75,9 +75,15 @@ function esc(str) {
         <div class="review-item">
           <div class="review-header">
             <span class="stars-display">
-              {[1,2,3,4,5].map(s => (
-                <span class={s <= r.rating ? 'star filled' : 'star'}>★</span>
-              ))}
+              {[1,2,3,4,5].map(s => {
+                const fill = Math.min(1, Math.max(0, r.rating - (s - 1)));
+                return (
+                  <span class="star-wrapper">
+                    <span class="star">★</span>
+                    <span class="star filled" style={`width: ${fill * 100}%`}>★</span>
+                  </span>
+                );
+              })}
             </span>
             <a href={`/works/${r.work_slug}/${r.edition_slug}`} class="review-edition">{esc(r.edition_title)}</a>
             <span class="review-date">

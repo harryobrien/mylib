@@ -366,6 +366,12 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       margin-right: 8px;
     }
     .stars-display, .stars-input { display: inline-flex; gap: 1px; }
+    .star-wrapper, .star-input-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+    }
     .star {
       font-size: 18px;
       color: #d9d4c8;
@@ -375,13 +381,29 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       padding: 0;
       line-height: 1;
       font-family: inherit;
+      position: absolute;
+      top: 0;
+      left: 0;
     }
-    .star.filled { color: #b8860b; }
-    .stars-input .star {
+    .star.filled {
+      color: #b8860b;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .star-quarter-zone {
+      position: absolute;
+      top: 0;
+      height: 100%;
       cursor: pointer;
-      transition: color 0.1s;
+      z-index: 1;
     }
-    .stars-input .star:hover { color: #b8860b; }
+    .stars-value {
+      font-size: 13px;
+      color: #8a8477;
+      margin-left: 6px;
+      align-self: center;
+    }
+    .stars-input .star { cursor: pointer; }
     .review-quick, .review-yours { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
     .review-text-preview {
       width: 100%;

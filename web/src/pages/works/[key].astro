@@ -4,6 +4,7 @@ import ReadingStatus from '../../components/ReadingStatus.tsx';
 import EditableField from '../../components/EditableField.tsx';
 import ReviewList from '../../components/ReviewList.tsx';
 import AddToList from '../../components/AddToList.tsx';
+import WorkLists from '../../components/WorkLists.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { key } = Astro.params;
@@ -26,12 +27,6 @@ const ogDescription = work.description
   : authorList ? `By ${authorList}` : undefined;
 
 Astro.response.headers.set('Cache-Control', 'public, no-cache, s-maxage=3600, stale-while-revalidate=86400');
-
-let workLists = [];
-try {
-  const listsRes = await fetch(`${API_BASE}/works/${key}/lists`);
-  if (listsRes.ok) workLists = (await listsRes.json()).lists || [];
-} catch {}
 
 function esc(str) {
   if (!str) return '';
@@ -126,19 +121,7 @@ function esc(str) {
     <ReviewList workSlug={key} client:only="react" />
   </section>
 
-  {workLists.length > 0 && (
-    <section class="work-lists">
-      <h2>In Lists</h2>
-      <div class="work-lists-items">
-        {workLists.map(l => (
-          <a href={`/lists/${l.id}`} class="work-list-item">
-            <span class="work-list-title">{l.title}</span>
-            <span class="work-list-by">by {l.display_name || l.username}</span>
-          </a>
-        ))}
-      </div>
-    </section>
-  )}
+  <WorkLists workSlug={key} client:only="react" />
 
   <section class="editions">
     <h2>Editions ({editions.length})</h2>

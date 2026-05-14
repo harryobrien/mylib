@@ -504,18 +504,34 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
     .profile-lists-grid { display: flex; flex-direction: column; border: 1px solid #d9d4c8; }
     .profile-list-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 10px 15px;
+      padding: 0;
       border-bottom: 1px solid #e8e4d9;
       background: #faf6ed;
+    }
+    .profile-list-item:last-child { border-bottom: none; }
+    .profile-list-link {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex: 1;
+      padding: 10px 15px;
       text-decoration: none;
       color: inherit;
     }
-    .profile-list-item:last-child { border-bottom: none; }
-    .profile-list-item:hover { background: #f0ebdf; }
+    .profile-list-link:hover { background: #f0ebdf; }
     .profile-list-title { font-weight: 500; }
     .profile-list-count { font-size: 13px; color: #8a8477; }
+    .profile-list-delete {
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: #a9a49a;
+      cursor: pointer;
+      padding: 10px 12px;
+      line-height: 1;
+    }
+    .profile-list-delete:hover { color: #a65d57; }
 
     .add-to-list { position: relative; margin-top: 10px; }
     .add-to-list-btn {

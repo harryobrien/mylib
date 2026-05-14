@@ -29,6 +29,7 @@ export default function AddToList({ workSlug }: Props) {
       await addWorkToList(listId, workSlug);
     }
     mutate('myLists');
+    mutate(`workLists:${workSlug}`);
   }
 
   async function handleCreate() {

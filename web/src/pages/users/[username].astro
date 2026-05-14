@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import ProfileEditor from '../../components/ProfileEditor.tsx';
 import FollowButton from '../../components/FollowButton.tsx';
+import UserLists from '../../components/UserLists.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { username } = Astro.params;
@@ -65,19 +66,7 @@ function esc(str) {
     </div>
   </section>
 
-  {profile.lists.length > 0 && (
-    <section class="profile-lists">
-      <h2>Lists ({profile.lists.length})</h2>
-      <div class="profile-lists-grid">
-        {profile.lists.map(l => (
-          <a href={`/lists/${l.id}`} class="profile-list-item">
-            <span class="profile-list-title">{l.title}</span>
-            <span class="profile-list-count">{l.work_count} {l.work_count === 1 ? 'book' : 'books'}</span>
-          </a>
-        ))}
-      </div>
-    </section>
-  )}
+  <UserLists username={profile.username} client:only="react" />
 
   {profile.reviews.length > 0 && (
     <section class="profile-reviews">

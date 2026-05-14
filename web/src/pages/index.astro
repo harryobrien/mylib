@@ -1,10 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import SearchBox from '../components/SearchBox.tsx';
+import FollowingFeed from '../components/FollowingFeed.tsx';
 import ReadingShelves from '../components/ReadingShelves.tsx';
 ---
 
 <Layout title="mylib" description="Curate your own library" showPortal>
   <SearchBox client:only="react" />
+  <FollowingFeed client:only="react" />
   <ReadingShelves client:only="react" />
 </Layout>

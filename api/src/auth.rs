@@ -36,6 +36,12 @@ pub fn router() -> Router<Arc<AppState>> {
             patch(update_progress),
         )
         .route("/auth/profile", patch(update_profile))
+        .route("/auth/following", get(list_following))
+        .route(
+            "/auth/following/{username}",
+            get(check_following).put(follow_user).delete(unfollow_user),
+        )
+        .route("/auth/feed", get(get_feed))
 }
 
 fn generate_token() -> String {
@@ -720,6 +726,151 @@ async fn update_profile(
     .await?;
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn resolve_username_to_id(state: &AppState, username: &str) -> Result<i32, AuthError> {
+    sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+        .bind(username)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AuthError::InvalidToken)
+}
+
+async fn follow_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let target_id = resolve_username_to_id(&state, &username).await?;
+
+    if user_id == target_id {
+        return Err(AuthError::Validation("Cannot follow yourself".into()));
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_follows (follower_id, following_id)
+        VALUES ($1, $2)
+        ON CONFLICT (follower_id, following_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(target_id)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn unfollow_user(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let target_id = resolve_username_to_id(&state, &username).await?;
+
+    sqlx::query("DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2")
+        .bind(user_id)
+        .bind(target_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn check_following(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let target_id = resolve_username_to_id(&state, &username).await?;
+
+    let following = sqlx::query_scalar::<_, i32>(
+        "SELECT follower_id FROM user_follows WHERE follower_id = $1 AND following_id = $2",
+    )
+    .bind(user_id)
+    .bind(target_id)
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
+
+    Ok(Json(serde_json::json!({ "following": following })))
+}
+
+async fn list_following(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    let following = sqlx::query_as::<_, (String, Option<String>)>(
+        r#"
+        SELECT u.username, u.display_name
+        FROM user_follows uf
+        JOIN users u ON uf.following_id = u.id
+        WHERE uf.follower_id = $1
+        ORDER BY uf.created_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let following: Vec<_> = following
+        .into_iter()
+        .map(|(username, display_name)| {
+            serde_json::json!({ "username": username, "display_name": display_name })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "following": following })))
+}
+
+async fn get_feed(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    let items = sqlx::query_as::<_, (String, Option<String>, i16, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
+        r#"
+        SELECT u.username, u.display_name, ur.rating, ur.review_text,
+               ur.edition_id, e.title, e.work_id, ec.cover_id, ur.updated_at
+        FROM user_follows uf
+        JOIN user_reviews ur ON uf.following_id = ur.user_id
+        JOIN users u ON ur.user_id = u.id
+        JOIN editions e ON ur.edition_id = e.id
+        LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
+        WHERE uf.follower_id = $1
+        ORDER BY ur.updated_at DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let items: Vec<_> = items
+        .into_iter()
+        .map(|(username, display_name, rating, review_text, edition_id, edition_title, work_id, cover_id, updated_at)| {
+            serde_json::json!({
+                "username": username,
+                "display_name": display_name,
+                "rating": rating,
+                "review_text": review_text,
+                "edition_slug": crate::base36::encode(edition_id as i64),
+                "edition_title": edition_title,
+                "work_slug": crate::base36::encode(work_id as i64),
+                "cover_id": cover_id,
+                "updated_at": updated_at,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "feed": items })))
 }
 
 pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {

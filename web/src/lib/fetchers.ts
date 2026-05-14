@@ -75,6 +75,8 @@ export interface UserProfile {
     did_not_finish: number;
   };
   reviews: Review[];
+  followers_count: number;
+  following_count: number;
 }
 
 export async function fetchUserProfile(username: string): Promise<UserProfile | null> {
@@ -93,4 +95,46 @@ export async function updateProfile(
     body: JSON.stringify(data),
   });
   return await res.json();
+}
+
+export async function fetchFollowState(username: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/following/${username}`, { credentials: 'include' });
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.following ?? false;
+}
+
+export async function followUser(username: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/following/${username}`, {
+    method: 'PUT',
+    credentials: 'include',
+  });
+  return res.ok;
+}
+
+export async function unfollowUser(username: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/following/${username}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  return res.ok;
+}
+
+export interface FeedItem {
+  username: string;
+  display_name: string | null;
+  rating: number;
+  review_text: string | null;
+  edition_slug: string;
+  edition_title: string;
+  work_slug: string;
+  cover_id: number | null;
+  updated_at: string;
+}
+
+export async function fetchFeed(): Promise<FeedItem[]> {
+  const res = await fetch(`${API_BASE}/auth/feed`, { credentials: 'include' });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.feed || [];
 }

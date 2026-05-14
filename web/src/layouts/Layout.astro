@@ -449,7 +449,9 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       font-size: 13px;
       color: #8a8477;
       font-style: italic;
+      text-decoration: none;
     }
+    .review-edition:hover { color: #b8860b; }
     .review-date {
       font-size: 12px;
       color: #a9a49a;
@@ -500,6 +502,95 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       font-size: 13px;
       color: #a65d57;
       margin-bottom: 8px;
+    }
+    .profile-actions { display: flex; gap: 8px; align-items: flex-start; }
+
+    .follow-btn {
+      padding: 6px 16px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid #5a5549;
+      background: #5a5549;
+      color: #fff;
+      cursor: pointer;
+    }
+    .follow-btn:hover { background: #3a3530; }
+    .follow-btn:disabled { opacity: 0.5; }
+    .follow-btn-following {
+      background: #faf6ed;
+      color: #5a5549;
+    }
+    .follow-btn-following:hover {
+      background: #f5ebe9;
+      border-color: #a65d57;
+      color: #a65d57;
+    }
+
+    .feed { margin: 20px 0; }
+    .feed-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #5a5549;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .feed-items {
+      border: 1px solid #d9d4c8;
+    }
+    .feed-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 15px;
+      border-bottom: 1px solid #e8e4d9;
+      background: #faf6ed;
+    }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-cover { flex-shrink: 0; }
+    .feed-cover img {
+      width: 33px;
+      height: 50px;
+      object-fit: cover;
+      background: #e8e4d9;
+    }
+    .feed-cover-placeholder {
+      width: 33px;
+      height: 50px;
+      background: #e8e4d9;
+    }
+    .feed-content { flex: 1; min-width: 0; }
+    .feed-header {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .feed-reviewer {
+      font-weight: 500;
+      color: #3a3530;
+      text-decoration: none;
+    }
+    .feed-reviewer:hover { color: #b8860b; }
+    .feed-action { color: #8a8477; margin: 0 4px; }
+    .feed-book {
+      color: #3a3530;
+      text-decoration: none;
+      font-style: italic;
+    }
+    .feed-book:hover { color: #b8860b; }
+    .feed-rating {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .feed-date {
+      font-size: 12px;
+      color: #a9a49a;
+    }
+    .feed-text {
+      font-size: 13px;
+      color: #5a5549;
+      margin-top: 4px;
+      line-height: 1.4;
     }
 
     @media (max-width: 600px) {

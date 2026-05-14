@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import ProfileEditor from '../../components/ProfileEditor.tsx';
+import FollowButton from '../../components/FollowButton.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { username } = Astro.params;
@@ -29,7 +30,10 @@ function esc(str) {
       {profile.display_name && <p class="profile-username">@{profile.username}</p>}
       <p class="profile-meta">Member since {memberSince}</p>
     </div>
-    <ProfileEditor username={profile.username} client:only="react" />
+    <div class="profile-actions">
+      <FollowButton username={profile.username} client:only="react" />
+      <ProfileEditor username={profile.username} client:only="react" />
+    </div>
   </div>
 
   {profile.bio && (
@@ -39,6 +43,14 @@ function esc(str) {
   )}
 
   <section class="profile-stats">
+    <div class="stat">
+      <span class="stat-count">{profile.followers_count}</span>
+      <span class="stat-label">Followers</span>
+    </div>
+    <div class="stat">
+      <span class="stat-count">{profile.following_count}</span>
+      <span class="stat-label">Following</span>
+    </div>
     <div class="stat">
       <span class="stat-count">{profile.reading_stats.finished}</span>
       <span class="stat-label">Finished</span>
@@ -64,7 +76,7 @@ function esc(str) {
                 <span class={s <= r.rating ? 'star filled' : 'star'}>★</span>
               ))}
             </span>
-            <span class="review-edition">{esc(r.edition_title)}</span>
+            <a href={`/works/${r.work_slug}/${r.edition_slug}`} class="review-edition">{esc(r.edition_title)}</a>
             <span class="review-date">
               {new Date(r.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
             </span>

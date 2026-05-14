@@ -746,9 +746,9 @@ async fn get_user_profile(
         reading_stats[status] = serde_json::json!(count);
     }
 
-    let reviews = sqlx::query_as::<_, (i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let reviews = sqlx::query_as::<_, (i32, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
-        SELECT ur.edition_id, ur.rating, ur.review_text, e.title,
+        SELECT ur.edition_id, e.work_id, ur.rating, ur.review_text, e.title,
                ur.created_at, ur.updated_at
         FROM user_reviews ur
         JOIN editions e ON ur.edition_id = e.id
@@ -762,9 +762,10 @@ async fn get_user_profile(
 
     let reviews: Vec<_> = reviews
         .into_iter()
-        .map(|(edition_id, rating, review_text, edition_title, created_at, updated_at)| {
+        .map(|(edition_id, work_id, rating, review_text, edition_title, created_at, updated_at)| {
             serde_json::json!({
                 "edition_slug": base36::encode(edition_id as i64),
+                "work_slug": base36::encode(work_id as i64),
                 "rating": rating,
                 "review_text": review_text,
                 "edition_title": edition_title,
@@ -774,6 +775,20 @@ async fn get_user_profile(
         })
         .collect();
 
+    let followers_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM user_follows WHERE following_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let following_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM user_follows WHERE follower_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
     Ok(Json(serde_json::json!({
         "username": username,
         "display_name": display_name,
@@ -781,6 +796,8 @@ async fn get_user_profile(
         "created_at": created_at,
         "reading_stats": reading_stats,
         "reviews": reviews,
+        "followers_count": followers_count,
+        "following_count": following_count,
     })))
 }
 

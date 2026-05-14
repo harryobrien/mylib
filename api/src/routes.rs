@@ -10,6 +10,63 @@ use std::sync::Arc;
 
 use crate::{auth, base36, db, indexer, search, AppState};
 
+#[derive(Serialize)]
+struct PatchResponse {
+    success: bool,
+    slug: String,
+}
+
+#[derive(Serialize)]
+struct ReviewItem {
+    user_id: i32,
+    username: String,
+    display_name: Option<String>,
+    rating: i16,
+    review_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edition_slug: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edition_title: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct ReviewsResponse {
+    reviews: Vec<ReviewItem>,
+}
+
+#[derive(Serialize)]
+struct ProfileReviewItem {
+    edition_slug: String,
+    work_slug: String,
+    rating: i16,
+    review_text: Option<String>,
+    edition_title: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct ReadingStats {
+    want_to_read: i64,
+    reading: i64,
+    finished: i64,
+    did_not_finish: i64,
+}
+
+#[derive(Serialize)]
+struct UserProfileResponse {
+    username: String,
+    display_name: Option<String>,
+    bio: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    reading_stats: ReadingStats,
+    reviews: Vec<ProfileReviewItem>,
+    followers_count: i64,
+    following_count: i64,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         // Search endpoints
@@ -423,7 +480,7 @@ async fn patch_work(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(patch): Json<PatchWork>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
@@ -479,7 +536,7 @@ async fn patch_work(
 
     indexer::reindex_work(&state.db, &state.search, id).await?;
 
-    Ok(Json(serde_json::json!({ "success": true, "slug": slug })))
+    Ok(Json(PatchResponse { success: true, slug }))
 }
 
 async fn patch_author(
@@ -487,7 +544,7 @@ async fn patch_author(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(patch): Json<PatchAuthor>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
@@ -556,7 +613,7 @@ async fn patch_author(
 
     indexer::reindex_author(&state.db, &state.search, id).await?;
 
-    Ok(Json(serde_json::json!({ "success": true, "slug": slug })))
+    Ok(Json(PatchResponse { success: true, slug }))
 }
 
 async fn patch_edition(
@@ -564,7 +621,7 @@ async fn patch_edition(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(patch): Json<PatchEdition>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
@@ -624,16 +681,16 @@ async fn patch_edition(
 
     indexer::reindex_edition(&state.db, &state.search, id).await?;
 
-    Ok(Json(serde_json::json!({ "success": true, "slug": slug })))
+    Ok(Json(PatchResponse { success: true, slug }))
 }
 
 async fn get_edition_reviews(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<ReviewsResponse>, AppError> {
     let edition_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let reviews = sqlx::query_as::<_, (i32, String, Option<String>, i16, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i16, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.rating, ur.review_text,
                ur.created_at, ur.updated_at
@@ -647,33 +704,27 @@ async fn get_edition_reviews(
     .fetch_all(&state.db)
     .await?;
 
-    let reviews: Vec<_> = reviews
+    let reviews = rows
         .into_iter()
         .map(|(user_id, username, display_name, rating, review_text, created_at, updated_at)| {
-            serde_json::json!({
-                "user_id": user_id,
-                "username": username,
-                "display_name": display_name,
-                "rating": rating,
-                "review_text": review_text,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            })
+            ReviewItem {
+                user_id, username, display_name, rating, review_text,
+                edition_slug: None, edition_title: None,
+                created_at, updated_at,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({
-        "reviews": reviews
-    })))
+    Ok(Json(ReviewsResponse { reviews }))
 }
 
 async fn get_work_reviews(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<ReviewsResponse>, AppError> {
     let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let reviews = sqlx::query_as::<_, (i32, String, Option<String>, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.edition_id, ur.rating,
                ur.review_text, e.title, ur.created_at, ur.updated_at
@@ -688,32 +739,25 @@ async fn get_work_reviews(
     .fetch_all(&state.db)
     .await?;
 
-    let reviews: Vec<_> = reviews
+    let reviews = rows
         .into_iter()
         .map(|(user_id, username, display_name, edition_id, rating, review_text, edition_title, created_at, updated_at)| {
-            serde_json::json!({
-                "user_id": user_id,
-                "username": username,
-                "display_name": display_name,
-                "edition_slug": base36::encode(edition_id as i64),
-                "rating": rating,
-                "review_text": review_text,
-                "edition_title": edition_title,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            })
+            ReviewItem {
+                user_id, username, display_name, rating, review_text,
+                edition_slug: Some(base36::encode(edition_id as i64)),
+                edition_title: Some(edition_title),
+                created_at, updated_at,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({
-        "reviews": reviews
-    })))
+    Ok(Json(ReviewsResponse { reviews }))
 }
 
 async fn get_user_profile(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<UserProfileResponse>, AppError> {
     let user = sqlx::query_as::<_, (i32, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(
         "SELECT id, username, display_name, bio, created_at FROM users WHERE LOWER(username) = LOWER($1)",
     )
@@ -736,17 +780,23 @@ async fn get_user_profile(
     .fetch_all(&state.db)
     .await?;
 
-    let mut reading_stats = serde_json::json!({
-        "want_to_read": 0,
-        "reading": 0,
-        "finished": 0,
-        "did_not_finish": 0,
-    });
+    let mut reading_stats = ReadingStats {
+        want_to_read: 0,
+        reading: 0,
+        finished: 0,
+        did_not_finish: 0,
+    };
     for (status, count) in &stats {
-        reading_stats[status] = serde_json::json!(count);
+        match status.as_str() {
+            "want_to_read" => reading_stats.want_to_read = *count,
+            "reading" => reading_stats.reading = *count,
+            "finished" => reading_stats.finished = *count,
+            "did_not_finish" => reading_stats.did_not_finish = *count,
+            _ => {}
+        }
     }
 
-    let reviews = sqlx::query_as::<_, (i32, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, (i32, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
         SELECT ur.edition_id, e.work_id, ur.rating, ur.review_text, e.title,
                ur.created_at, ur.updated_at
@@ -760,18 +810,18 @@ async fn get_user_profile(
     .fetch_all(&state.db)
     .await?;
 
-    let reviews: Vec<_> = reviews
+    let reviews = rows
         .into_iter()
         .map(|(edition_id, work_id, rating, review_text, edition_title, created_at, updated_at)| {
-            serde_json::json!({
-                "edition_slug": base36::encode(edition_id as i64),
-                "work_slug": base36::encode(work_id as i64),
-                "rating": rating,
-                "review_text": review_text,
-                "edition_title": edition_title,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            })
+            ProfileReviewItem {
+                edition_slug: base36::encode(edition_id as i64),
+                work_slug: base36::encode(work_id as i64),
+                rating,
+                review_text,
+                edition_title,
+                created_at,
+                updated_at,
+            }
         })
         .collect();
 
@@ -789,16 +839,16 @@ async fn get_user_profile(
     .fetch_one(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({
-        "username": username,
-        "display_name": display_name,
-        "bio": bio,
-        "created_at": created_at,
-        "reading_stats": reading_stats,
-        "reviews": reviews,
-        "followers_count": followers_count,
-        "following_count": following_count,
-    })))
+    Ok(Json(UserProfileResponse {
+        username,
+        display_name,
+        bio,
+        created_at,
+        reading_stats,
+        reviews,
+        followers_count,
+        following_count,
+    }))
 }
 
 pub enum AppError {

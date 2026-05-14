@@ -74,6 +74,91 @@ pub struct UserInfo {
     display_name: Option<String>,
 }
 
+#[derive(Serialize)]
+pub struct SuccessResponse {
+    success: bool,
+}
+
+#[derive(Serialize)]
+pub struct StatusChangeResponse {
+    success: bool,
+    status: String,
+}
+
+#[derive(Serialize)]
+pub struct RatingChangeResponse {
+    success: bool,
+    rating: i16,
+}
+
+#[derive(Serialize)]
+pub struct UserEditionItem {
+    slug: String,
+    edition_id: i32,
+    work_slug: String,
+    title: String,
+    status: String,
+    cover_id: Option<i64>,
+    started_at: Option<chrono::NaiveDate>,
+    finished_at: Option<chrono::NaiveDate>,
+    current_page: Option<i32>,
+    number_of_pages: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct UserEditionsResponse {
+    success: bool,
+    editions: Vec<UserEditionItem>,
+}
+
+#[derive(Serialize)]
+pub struct ReviewDetail {
+    rating: i16,
+    review_text: Option<String>,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct UserReviewResponse {
+    success: bool,
+    review: Option<ReviewDetail>,
+}
+
+#[derive(Serialize)]
+pub struct FollowStateResponse {
+    following: bool,
+}
+
+#[derive(Serialize)]
+pub struct FollowingUser {
+    username: String,
+    display_name: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct FollowingListResponse {
+    following: Vec<FollowingUser>,
+}
+
+#[derive(Serialize)]
+pub struct FeedItem {
+    username: String,
+    display_name: Option<String>,
+    rating: i16,
+    review_text: Option<String>,
+    edition_slug: String,
+    edition_title: String,
+    work_slug: String,
+    cover_id: Option<i64>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct FeedResponse {
+    feed: Vec<FeedItem>,
+}
+
 fn validate_username(username: &str) -> Result<(), AuthError> {
     if username.len() < 3 || username.len() > 30 {
         return Err(AuthError::Validation("Username must be 3-30 characters".into()));
@@ -389,7 +474,7 @@ async fn set_edition_status(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(req): Json<SetEditionStatusRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<StatusChangeResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -444,17 +529,17 @@ async fn set_edition_status(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "status": req.status
-    })))
+    Ok(Json(StatusChangeResponse {
+        success: true,
+        status: req.status,
+    }))
 }
 
 async fn remove_edition(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -464,16 +549,16 @@ async fn remove_edition(
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn list_user_editions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<UserEditionsResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let editions = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>, Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, Option<i32>, Option<i32>)>(
+    let rows = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>, Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, Option<i32>, Option<i32>)>(
         r#"
         SELECT e.id, e.title, ue.status, e.work_id, ec.cover_id,
                ue.started_at, ue.finished_at, ue.current_page, e.number_of_pages
@@ -488,28 +573,25 @@ async fn list_user_editions(
     .fetch_all(&state.db)
     .await?;
 
-    let editions: Vec<_> = editions
+    let editions = rows
         .into_iter()
         .map(|(id, title, status, work_id, cover_id, started_at, finished_at, current_page, number_of_pages)| {
-            serde_json::json!({
-                "slug": base36::encode(id as i64),
-                "edition_id": id,
-                "work_slug": base36::encode(work_id as i64),
-                "title": title,
-                "status": status,
-                "cover_id": cover_id,
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "current_page": current_page,
-                "number_of_pages": number_of_pages,
-            })
+            UserEditionItem {
+                slug: base36::encode(id as i64),
+                edition_id: id,
+                work_slug: base36::encode(work_id as i64),
+                title,
+                status,
+                cover_id,
+                started_at,
+                finished_at,
+                current_page,
+                number_of_pages,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "editions": editions
-    })))
+    Ok(Json(UserEditionsResponse { success: true, editions }))
 }
 
 #[derive(Deserialize)]
@@ -524,7 +606,7 @@ async fn update_progress(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(req): Json<UpdateProgressRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -555,7 +637,7 @@ async fn update_progress(
         return Err(AuthError::InvalidToken);
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 const MAX_REVIEW_TEXT: usize = 10000;
@@ -570,7 +652,7 @@ async fn get_user_review(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<UserReviewResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -582,21 +664,14 @@ async fn get_user_review(
     .fetch_optional(&state.db)
     .await?;
 
-    match review {
-        Some((rating, review_text, created_at, updated_at)) => Ok(Json(serde_json::json!({
-            "success": true,
-            "review": {
-                "rating": rating,
-                "review_text": review_text,
-                "created_at": created_at,
-                "updated_at": updated_at,
-            }
-        }))),
-        None => Ok(Json(serde_json::json!({
-            "success": true,
-            "review": null
-        }))),
-    }
+    let review = review.map(|(rating, review_text, created_at, updated_at)| ReviewDetail {
+        rating,
+        review_text,
+        created_at,
+        updated_at,
+    });
+
+    Ok(Json(UserReviewResponse { success: true, review }))
 }
 
 async fn upsert_review(
@@ -604,7 +679,7 @@ async fn upsert_review(
     headers: HeaderMap,
     Path(slug): Path<String>,
     Json(req): Json<UpsertReviewRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<RatingChangeResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -643,17 +718,17 @@ async fn upsert_review(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "rating": req.rating
-    })))
+    Ok(Json(RatingChangeResponse {
+        success: true,
+        rating: req.rating,
+    }))
 }
 
 async fn delete_review(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(slug): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
@@ -663,7 +738,7 @@ async fn delete_review(
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 #[derive(Deserialize)]
@@ -677,7 +752,7 @@ async fn update_profile(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
     if let Some(ref username) = req.username {
@@ -725,7 +800,7 @@ async fn update_profile(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn resolve_username_to_id(state: &AppState, username: &str) -> Result<i32, AuthError> {
@@ -740,7 +815,7 @@ async fn follow_user(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(username): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
@@ -760,14 +835,14 @@ async fn follow_user(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn unfollow_user(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(username): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<SuccessResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
@@ -777,14 +852,14 @@ async fn unfollow_user(
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn check_following(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(username): Path<String>,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<FollowStateResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
@@ -797,16 +872,16 @@ async fn check_following(
     .await?
     .is_some();
 
-    Ok(Json(serde_json::json!({ "following": following })))
+    Ok(Json(FollowStateResponse { following }))
 }
 
 async fn list_following(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<FollowingListResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let following = sqlx::query_as::<_, (String, Option<String>)>(
+    let rows = sqlx::query_as::<_, (String, Option<String>)>(
         r#"
         SELECT u.username, u.display_name
         FROM user_follows uf
@@ -819,23 +894,21 @@ async fn list_following(
     .fetch_all(&state.db)
     .await?;
 
-    let following: Vec<_> = following
+    let following = rows
         .into_iter()
-        .map(|(username, display_name)| {
-            serde_json::json!({ "username": username, "display_name": display_name })
-        })
+        .map(|(username, display_name)| FollowingUser { username, display_name })
         .collect();
 
-    Ok(Json(serde_json::json!({ "following": following })))
+    Ok(Json(FollowingListResponse { following }))
 }
 
 async fn get_feed(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AuthError> {
+) -> Result<Json<FeedResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let items = sqlx::query_as::<_, (String, Option<String>, i16, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (String, Option<String>, i16, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
         r#"
         SELECT u.username, u.display_name, ur.rating, ur.review_text,
                ur.edition_id, e.title, e.work_id, ec.cover_id, ur.updated_at
@@ -853,24 +926,24 @@ async fn get_feed(
     .fetch_all(&state.db)
     .await?;
 
-    let items: Vec<_> = items
+    let feed = rows
         .into_iter()
         .map(|(username, display_name, rating, review_text, edition_id, edition_title, work_id, cover_id, updated_at)| {
-            serde_json::json!({
-                "username": username,
-                "display_name": display_name,
-                "rating": rating,
-                "review_text": review_text,
-                "edition_slug": crate::base36::encode(edition_id as i64),
-                "edition_title": edition_title,
-                "work_slug": crate::base36::encode(work_id as i64),
-                "cover_id": cover_id,
-                "updated_at": updated_at,
-            })
+            FeedItem {
+                username,
+                display_name,
+                rating,
+                review_text,
+                edition_slug: base36::encode(edition_id as i64),
+                edition_title,
+                work_slug: base36::encode(work_id as i64),
+                cover_id,
+                updated_at,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({ "feed": items })))
+    Ok(Json(FeedResponse { feed }))
 }
 
 pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {

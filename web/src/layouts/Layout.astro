@@ -168,13 +168,11 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
     }
     h2 { font-weight: 500; font-size: 1.2em; margin: 20px 0 10px; }
 
-    /* Account */
     .account-text { font-size: 14px; color: #5a5549; }
     .account-link { font-size: 14px; color: #5a5549; text-decoration: underline; text-underline-offset: 2px; }
     .account-link-active { color: #b8860b; font-weight: 500; }
     .account-sep { color: #a9a49a; }
 
-    /* Editable fields */
     .editable-field { position: relative; }
     .edit-pencil {
       background: none;
@@ -207,7 +205,6 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       resize: vertical;
     }
 
-    /* Reading status buttons */
     .status-btns { display: inline-flex; gap: 4px; margin-left: 8px; }
     .status-btn {
       font-size: 11px;
@@ -230,7 +227,6 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       color: #fff;
     }
 
-    /* Reading shelves */
     .shelves { margin-top: 30px; }
     .shelf { margin-bottom: 25px; }
     .shelf-title {
@@ -472,7 +468,6 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
     }
     .review-author:hover { color: #b8860b; }
 
-    /* Profile editor */
     .profile-editor { max-width: 360px; }
     .profile-editor-field {
       display: flex;
@@ -504,6 +499,99 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       margin-bottom: 8px;
     }
     .profile-actions { display: flex; gap: 8px; align-items: flex-start; }
+
+    .profile-lists { margin-bottom: 20px; }
+    .profile-lists-grid { display: flex; flex-direction: column; border: 1px solid #d9d4c8; }
+    .profile-list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      border-bottom: 1px solid #e8e4d9;
+      background: #faf6ed;
+      text-decoration: none;
+      color: inherit;
+    }
+    .profile-list-item:last-child { border-bottom: none; }
+    .profile-list-item:hover { background: #f0ebdf; }
+    .profile-list-title { font-weight: 500; }
+    .profile-list-count { font-size: 13px; color: #8a8477; }
+
+    .add-to-list { position: relative; margin-top: 10px; }
+    .add-to-list-btn {
+      font-size: 13px;
+      padding: 4px 12px;
+      border: 1px solid #d9d4c8;
+      background: #faf6ed;
+      color: #5a5549;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .add-to-list-btn:hover { border-color: #5a5549; }
+    .add-to-list-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      z-index: 10;
+      margin-top: 4px;
+      min-width: 220px;
+      background: #faf6ed;
+      border: 1px solid #d9d4c8;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .add-to-list-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #e8e4d9;
+    }
+    .add-to-list-item:hover { background: #f0ebdf; }
+    .add-to-list-count { margin-left: auto; font-size: 12px; color: #8a8477; }
+    .add-to-list-new {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      border: none;
+      background: none;
+      color: #b8860b;
+      cursor: pointer;
+      text-align: left;
+    }
+    .add-to-list-new:hover { background: #f0ebdf; }
+    .add-to-list-create {
+      display: flex;
+      gap: 6px;
+      padding: 8px;
+    }
+    .add-to-list-create input {
+      flex: 1;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 4px 8px;
+      border: 1px solid #d9d4c8;
+      background: #fffef9;
+    }
+
+    .work-lists { margin-bottom: 20px; }
+    .work-lists-items { display: flex; flex-wrap: wrap; gap: 8px; }
+    .work-list-item {
+      display: inline-flex;
+      flex-direction: column;
+      padding: 8px 14px;
+      border: 1px solid #d9d4c8;
+      background: #faf6ed;
+      text-decoration: none;
+      color: inherit;
+      font-size: 14px;
+    }
+    .work-list-item:hover { background: #f0ebdf; border-color: #5a5549; }
+    .work-list-title { font-weight: 500; }
+    .work-list-by { font-size: 12px; color: #8a8477; }
 
     .follow-btn {
       padding: 6px 16px;

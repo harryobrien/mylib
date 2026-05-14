@@ -42,6 +42,15 @@ pub fn router() -> Router<Arc<AppState>> {
             get(check_following).put(follow_user).delete(unfollow_user),
         )
         .route("/auth/feed", get(get_feed))
+        .route("/auth/lists", get(list_my_lists).post(create_list))
+        .route(
+            "/auth/lists/{id}",
+            patch(update_list).delete(delete_list),
+        )
+        .route(
+            "/auth/lists/{id}/works/{slug}",
+            put(add_work_to_list).delete(remove_work_from_list),
+        )
 }
 
 fn generate_token() -> String {
@@ -801,6 +810,208 @@ async fn update_profile(
     .await?;
 
     Ok(Json(SuccessResponse { success: true }))
+}
+
+#[derive(Deserialize)]
+pub struct CreateListRequest {
+    title: String,
+    description: Option<String>,
+}
+
+async fn create_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<CreateListRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    if req.title.is_empty() || req.title.len() > 200 {
+        return Err(AuthError::Validation("Title must be 1-200 characters".into()));
+    }
+
+    let list_id = sqlx::query_scalar::<_, i32>(
+        "INSERT INTO user_lists (user_id, title, description) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(user_id)
+    .bind(&req.title)
+    .bind(&req.description)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "success": true, "id": list_id })))
+}
+
+async fn update_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(list_id): Path<i32>,
+    Json(req): Json<CreateListRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    if req.title.is_empty() || req.title.len() > 200 {
+        return Err(AuthError::Validation("Title must be 1-200 characters".into()));
+    }
+
+    let rows = sqlx::query(
+        "UPDATE user_lists SET title = $3, description = $4, updated_at = NOW() WHERE id = $1 AND user_id = $2",
+    )
+    .bind(list_id)
+    .bind(user_id)
+    .bind(&req.title)
+    .bind(&req.description)
+    .execute(&state.db)
+    .await?;
+
+    if rows.rows_affected() == 0 {
+        return Err(AuthError::InvalidToken);
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn delete_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(list_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    sqlx::query("DELETE FROM user_lists WHERE id = $1 AND user_id = $2")
+        .bind(list_id)
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn add_work_to_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((list_id, slug)): Path<(i32, String)>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    let owns = sqlx::query_scalar::<_, i32>(
+        "SELECT id FROM user_lists WHERE id = $1 AND user_id = $2",
+    )
+    .bind(list_id)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
+
+    if !owns {
+        return Err(AuthError::Unauthorized);
+    }
+
+    let max_pos = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT MAX(position) FROM user_list_works WHERE list_id = $1",
+    )
+    .bind(list_id)
+    .fetch_one(&state.db)
+    .await?
+    .unwrap_or(-1);
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_list_works (list_id, work_id, position)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (list_id, work_id) DO NOTHING
+        "#,
+    )
+    .bind(list_id)
+    .bind(work_id)
+    .bind(max_pos + 1)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn remove_work_from_list(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((list_id, slug)): Path<(i32, String)>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+    let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
+
+    let owns = sqlx::query_scalar::<_, i32>(
+        "SELECT id FROM user_lists WHERE id = $1 AND user_id = $2",
+    )
+    .bind(list_id)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
+
+    if !owns {
+        return Err(AuthError::Unauthorized);
+    }
+
+    sqlx::query("DELETE FROM user_list_works WHERE list_id = $1 AND work_id = $2")
+        .bind(list_id)
+        .bind(work_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn list_my_lists(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    let lists = sqlx::query_as::<_, (i32, String, Option<String>, i64)>(
+        r#"
+        SELECT ul.id, ul.title, ul.description,
+               (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
+        FROM user_lists ul
+        WHERE ul.user_id = $1
+        ORDER BY ul.updated_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    // Also get all work_ids per list for the AddToList component
+    let work_ids = sqlx::query_as::<_, (i32, i32)>(
+        r#"
+        SELECT ulw.list_id, ulw.work_id
+        FROM user_list_works ulw
+        JOIN user_lists ul ON ulw.list_id = ul.id
+        WHERE ul.user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let lists: Vec<_> = lists
+        .into_iter()
+        .map(|(id, title, description, work_count)| {
+            let works: Vec<String> = work_ids
+                .iter()
+                .filter(|(lid, _)| *lid == id)
+                .map(|(_, wid)| base36::encode(*wid as i64))
+                .collect();
+            serde_json::json!({
+                "id": id,
+                "title": title,
+                "description": description,
+                "work_count": work_count,
+                "work_slugs": works,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "lists": lists })))
 }
 
 async fn resolve_username_to_id(state: &AppState, username: &str) -> Result<i32, AuthError> {

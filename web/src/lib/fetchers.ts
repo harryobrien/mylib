@@ -75,6 +75,7 @@ export interface UserProfile {
     did_not_finish: number;
   };
   reviews: Review[];
+  lists: { id: number; title: string; work_count: number }[];
   followers_count: number;
   following_count: number;
 }
@@ -137,4 +138,89 @@ export async function fetchFeed(): Promise<FeedItem[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.feed || [];
+}
+
+export interface ListDetail {
+  id: number;
+  title: string;
+  description: string | null;
+  username: string;
+  display_name: string | null;
+  created_at: string;
+  works: {
+    slug: string;
+    title: string;
+    description: string | null;
+    cover_id: number | null;
+    position: number;
+  }[];
+}
+
+export interface ListSummary {
+  id: number;
+  title: string;
+  description: string | null;
+  work_count: number;
+  work_slugs?: string[];
+}
+
+export interface WorkListItem {
+  id: number;
+  title: string;
+  username: string;
+  display_name: string | null;
+}
+
+export async function fetchList(id: number): Promise<ListDetail | null> {
+  const res = await fetch(`${API_BASE}/lists/${id}`);
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+export async function fetchWorkLists(slug: string): Promise<WorkListItem[]> {
+  const res = await fetch(`${API_BASE}/works/${slug}/lists`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.lists || [];
+}
+
+export async function fetchMyLists(): Promise<ListSummary[]> {
+  const res = await fetch(`${API_BASE}/auth/lists`, { credentials: 'include' });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.lists || [];
+}
+
+export async function createList(data: { title: string; description?: string }): Promise<{ success: boolean; id?: number }> {
+  const res = await fetch(`${API_BASE}/auth/lists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return await res.json();
+}
+
+export async function deleteList(id: number): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/lists/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  return res.ok;
+}
+
+export async function addWorkToList(listId: number, workSlug: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/lists/${listId}/works/${workSlug}`, {
+    method: 'PUT',
+    credentials: 'include',
+  });
+  return res.ok;
+}
+
+export async function removeWorkFromList(listId: number, workSlug: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/lists/${listId}/works/${workSlug}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  return res.ok;
 }

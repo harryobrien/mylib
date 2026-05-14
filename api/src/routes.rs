@@ -56,6 +56,13 @@ struct ReadingStats {
 }
 
 #[derive(Serialize)]
+struct ProfileListItem {
+    id: i32,
+    title: String,
+    work_count: i64,
+}
+
+#[derive(Serialize)]
 struct UserProfileResponse {
     username: String,
     display_name: Option<String>,
@@ -63,8 +70,55 @@ struct UserProfileResponse {
     created_at: chrono::DateTime<chrono::Utc>,
     reading_stats: ReadingStats,
     reviews: Vec<ProfileReviewItem>,
+    lists: Vec<ProfileListItem>,
     followers_count: i64,
     following_count: i64,
+}
+
+#[derive(Serialize)]
+struct ListWorkItem {
+    slug: String,
+    title: String,
+    description: Option<String>,
+    cover_id: Option<i64>,
+    position: i32,
+}
+
+#[derive(Serialize)]
+struct ListDetailResponse {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    username: String,
+    display_name: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    works: Vec<ListWorkItem>,
+}
+
+#[derive(Serialize)]
+struct ListSummaryItem {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    work_count: i64,
+}
+
+#[derive(Serialize)]
+struct ListsResponse {
+    lists: Vec<ListSummaryItem>,
+}
+
+#[derive(Serialize)]
+struct WorkListItem {
+    id: i32,
+    title: String,
+    username: String,
+    display_name: Option<String>,
+}
+
+#[derive(Serialize)]
+struct WorkListsResponse {
+    lists: Vec<WorkListItem>,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -84,6 +138,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/editions/{slug}/reviews", get(get_edition_reviews))
         .route("/works/{slug}/reviews", get(get_work_reviews))
         .route("/users/{username}", get(get_user_profile))
+        .route("/users/{username}/lists", get(get_user_lists))
+        .route("/lists/{id}", get(get_list))
+        .route("/works/{slug}/lists", get(get_work_lists))
         .route("/health", get(health))
 }
 
@@ -839,6 +896,24 @@ async fn get_user_profile(
     .fetch_one(&state.db)
     .await?;
 
+    let lists = sqlx::query_as::<_, (i32, String, i64)>(
+        r#"
+        SELECT ul.id, ul.title,
+               (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
+        FROM user_lists ul
+        WHERE ul.user_id = $1
+        ORDER BY ul.updated_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let lists = lists
+        .into_iter()
+        .map(|(id, title, work_count)| ProfileListItem { id, title, work_count })
+        .collect();
+
     Ok(Json(UserProfileResponse {
         username,
         display_name,
@@ -846,9 +921,127 @@ async fn get_user_profile(
         created_at,
         reading_stats,
         reviews,
+        lists,
         followers_count,
         following_count,
     }))
+}
+
+async fn get_list(
+    State(state): State<Arc<AppState>>,
+    Path(list_id): Path<i32>,
+) -> Result<Json<ListDetailResponse>, AppError> {
+    let list = sqlx::query_as::<_, (i32, String, Option<String>, String, Option<String>, chrono::DateTime<chrono::Utc>)>(
+        r#"
+        SELECT ul.id, ul.title, ul.description, u.username, u.display_name, ul.created_at
+        FROM user_lists ul
+        JOIN users u ON ul.user_id = u.id
+        WHERE ul.id = $1
+        "#,
+    )
+    .bind(list_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound)?;
+
+    let (id, title, description, username, display_name, created_at) = list;
+
+    let works = sqlx::query_as::<_, (i32, String, Option<String>, Option<i64>, i32)>(
+        r#"
+        SELECT w.id, w.title, w.description, wc.cover_id, ulw.position
+        FROM user_list_works ulw
+        JOIN works w ON ulw.work_id = w.id
+        LEFT JOIN work_covers wc ON w.id = wc.work_id AND wc.position = 0
+        WHERE ulw.list_id = $1
+        ORDER BY ulw.position ASC
+        "#,
+    )
+    .bind(list_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let works = works
+        .into_iter()
+        .map(|(work_id, work_title, work_description, cover_id, position)| ListWorkItem {
+            slug: base36::encode(work_id as i64),
+            title: work_title,
+            description: work_description.map(|d| if d.len() > 200 { format!("{}...", &d[..200]) } else { d }),
+            cover_id,
+            position,
+        })
+        .collect();
+
+    Ok(Json(ListDetailResponse {
+        id,
+        title,
+        description,
+        username,
+        display_name,
+        created_at,
+        works,
+    }))
+}
+
+async fn get_user_lists(
+    State(state): State<Arc<AppState>>,
+    Path(username): Path<String>,
+) -> Result<Json<ListsResponse>, AppError> {
+    let user_id = sqlx::query_scalar::<_, i32>(
+        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)",
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound)?;
+
+    let lists = sqlx::query_as::<_, (i32, String, Option<String>, i64)>(
+        r#"
+        SELECT ul.id, ul.title, ul.description,
+               (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
+        FROM user_lists ul
+        WHERE ul.user_id = $1
+        ORDER BY ul.updated_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let lists = lists
+        .into_iter()
+        .map(|(id, title, description, work_count)| ListSummaryItem { id, title, description, work_count })
+        .collect();
+
+    Ok(Json(ListsResponse { lists }))
+}
+
+async fn get_work_lists(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+) -> Result<Json<WorkListsResponse>, AppError> {
+    let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
+
+    let lists = sqlx::query_as::<_, (i32, String, String, Option<String>, i64)>(
+        r#"
+        SELECT ul.id, ul.title, u.username, u.display_name,
+               (SELECT COUNT(*) FROM user_follows WHERE following_id = u.id) as follower_count
+        FROM user_list_works ulw
+        JOIN user_lists ul ON ulw.list_id = ul.id
+        JOIN users u ON ul.user_id = u.id
+        WHERE ulw.work_id = $1
+        ORDER BY follower_count DESC, ul.created_at DESC
+        "#,
+    )
+    .bind(work_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let lists = lists
+        .into_iter()
+        .map(|(id, title, username, display_name, _)| WorkListItem { id, title, username, display_name })
+        .collect();
+
+    Ok(Json(WorkListsResponse { lists }))
 }
 
 pub enum AppError {

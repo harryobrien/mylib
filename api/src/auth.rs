@@ -17,6 +17,90 @@ use serde::{Deserialize, Serialize};
 
 use crate::{base36, AppState};
 
+#[derive(sqlx::FromRow)]
+struct UserRow {
+    id: i32,
+    password_hash: String,
+    email_verified: bool,
+    username: String,
+    display_name: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserSessionRow {
+    id: i32,
+    email: String,
+    email_verified: bool,
+    username: String,
+    display_name: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct VerificationRow {
+    id: i32,
+    user_id: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct EditionLookupRow {
+    id: i32,
+    number_of_pages: Option<i32>,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserEditionRow {
+    id: i32,
+    title: String,
+    status: String,
+    work_id: i32,
+    cover_id: Option<i64>,
+    started_at: Option<chrono::NaiveDate>,
+    finished_at: Option<chrono::NaiveDate>,
+    current_page: Option<i32>,
+    number_of_pages: Option<i32>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ReviewRow {
+    rating: f32,
+    review_text: Option<String>,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ListRow {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    work_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct ListWorkRow {
+    list_id: i32,
+    work_id: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct FollowingRow {
+    username: String,
+    display_name: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct FeedRow {
+    username: String,
+    display_name: Option<String>,
+    rating: f32,
+    review_text: Option<String>,
+    edition_id: i32,
+    title: String,
+    work_id: i32,
+    cover_id: Option<i64>,
+    updated_at: chrono::DateTime<Utc>,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/auth/register", post(register))
@@ -29,12 +113,11 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/auth/editions/{slug}", delete(remove_edition))
         .route(
             "/auth/editions/{slug}/review",
-            get(get_user_review).put(upsert_review).delete(delete_review),
+            get(get_user_review)
+                .put(upsert_review)
+                .delete(delete_review),
         )
-        .route(
-            "/auth/editions/{slug}/progress",
-            patch(update_progress),
-        )
+        .route("/auth/editions/{slug}/progress", patch(update_progress))
         .route("/auth/profile", patch(update_profile))
         .route("/auth/following", get(list_following))
         .route(
@@ -43,10 +126,7 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route("/auth/feed", get(get_feed))
         .route("/auth/lists", get(list_my_lists).post(create_list))
-        .route(
-            "/auth/lists/{id}",
-            patch(update_list).delete(delete_list),
-        )
+        .route("/auth/lists/{id}", patch(update_list).delete(delete_list))
         .route(
             "/auth/lists/{id}/works/{slug}",
             put(add_work_to_list).delete(remove_work_from_list),
@@ -170,10 +250,17 @@ pub struct FeedResponse {
 
 fn validate_username(username: &str) -> Result<(), AuthError> {
     if username.len() < 3 || username.len() > 30 {
-        return Err(AuthError::Validation("Username must be 3-30 characters".into()));
+        return Err(AuthError::Validation(
+            "Username must be 3-30 characters".into(),
+        ));
     }
-    if !username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(AuthError::Validation("Username must be alphanumeric or underscores".into()));
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(AuthError::Validation(
+            "Username must be alphanumeric or underscores".into(),
+        ));
     }
     Ok(())
 }
@@ -201,13 +288,12 @@ async fn register(
         return Err(AuthError::EmailTaken);
     }
 
-    let username_taken = sqlx::query_scalar::<_, i32>(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)",
-    )
-    .bind(&req.username)
-    .fetch_optional(&state.db)
-    .await?
-    .is_some();
+    let username_taken =
+        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+            .bind(&req.username)
+            .fetch_optional(&state.db)
+            .await?
+            .is_some();
 
     if username_taken {
         return Err(AuthError::Validation("Username already taken".into()));
@@ -293,7 +379,7 @@ async fn login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AuthError> {
-    let user = sqlx::query_as::<_, (i32, String, bool, String, Option<String>)>(
+    let user = sqlx::query_as::<_, UserRow>(
         "SELECT id, password_hash, email_verified, username, display_name FROM users WHERE email = $1",
     )
     .bind(&req.email)
@@ -301,7 +387,11 @@ async fn login(
     .await?
     .ok_or(AuthError::InvalidCredentials)?;
 
-    let (user_id, password_hash, email_verified, username, display_name) = user;
+    let user_id = user.id;
+    let password_hash = user.password_hash;
+    let email_verified = user.email_verified;
+    let username = user.username;
+    let display_name = user.display_name;
 
     let parsed_hash = PasswordHash::new(&password_hash).map_err(|_| AuthError::Internal)?;
     Argon2::default()
@@ -377,7 +467,7 @@ async fn logout(
 
 async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<AuthResponse> {
     let user = match extract_session_token(&headers) {
-        Some(token) => sqlx::query_as::<_, (i32, String, bool, String, Option<String>)>(
+        Some(token) => sqlx::query_as::<_, UserSessionRow>(
             r#"
             SELECT u.id, u.email, u.email_verified, u.username, u.display_name
             FROM users u
@@ -390,12 +480,12 @@ async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<Auth
         .await
         .ok()
         .flatten()
-        .map(|(id, email, email_verified, username, display_name)| UserInfo {
-            id,
-            email,
-            email_verified,
-            username,
-            display_name,
+        .map(|row| UserInfo {
+            id: row.id,
+            email: row.email,
+            email_verified: row.email_verified,
+            username: row.username,
+            display_name: row.display_name,
         }),
         None => None,
     };
@@ -416,7 +506,7 @@ async fn verify_email(
     State(state): State<Arc<AppState>>,
     Query(query): Query<VerifyEmailQuery>,
 ) -> Result<impl IntoResponse, AuthError> {
-    let verification = sqlx::query_as::<_, (i32, i32)>(
+    let verification = sqlx::query_as::<_, VerificationRow>(
         "SELECT id, user_id FROM email_verifications WHERE token = $1 AND expires_at > NOW()",
     )
     .bind(&query.token)
@@ -424,7 +514,8 @@ async fn verify_email(
     .await?
     .ok_or(AuthError::InvalidToken)?;
 
-    let (verification_id, user_id) = verification;
+    let verification_id = verification.id;
+    let user_id = verification.user_id;
 
     // Mark email as verified
     sqlx::query("UPDATE users SET email_verified = TRUE WHERE id = $1")
@@ -491,7 +582,7 @@ async fn set_edition_status(
         return Err(AuthError::InvalidToken);
     }
 
-    let edition = sqlx::query_as::<_, (i32, Option<i32>)>(
+    let edition = sqlx::query_as::<_, EditionLookupRow>(
         "SELECT id, number_of_pages FROM editions WHERE id = $1",
     )
     .bind(edition_id)
@@ -500,7 +591,7 @@ async fn set_edition_status(
     .ok_or(AuthError::InvalidToken)?;
 
     let today = Utc::now().date_naive();
-    let number_of_pages = edition.1;
+    let number_of_pages = edition.number_of_pages;
 
     let started_at = match req.status.as_str() {
         "reading" | "finished" => req.started_at.or(Some(today)),
@@ -567,7 +658,7 @@ async fn list_user_editions(
 ) -> Result<Json<UserEditionsResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let rows = sqlx::query_as::<_, (i32, String, String, i32, Option<i64>, Option<chrono::NaiveDate>, Option<chrono::NaiveDate>, Option<i32>, Option<i32>)>(
+    let rows = sqlx::query_as::<_, UserEditionRow>(
         r#"
         SELECT e.id, e.title, ue.status, e.work_id, ec.cover_id,
                ue.started_at, ue.finished_at, ue.current_page, e.number_of_pages
@@ -584,23 +675,24 @@ async fn list_user_editions(
 
     let editions = rows
         .into_iter()
-        .map(|(id, title, status, work_id, cover_id, started_at, finished_at, current_page, number_of_pages)| {
-            UserEditionItem {
-                slug: base36::encode(id as i64),
-                edition_id: id,
-                work_slug: base36::encode(work_id as i64),
-                title,
-                status,
-                cover_id,
-                started_at,
-                finished_at,
-                current_page,
-                number_of_pages,
-            }
+        .map(|row| UserEditionItem {
+            slug: base36::encode(row.id as i64),
+            edition_id: row.id,
+            work_slug: base36::encode(row.work_id as i64),
+            title: row.title,
+            status: row.status,
+            cover_id: row.cover_id,
+            started_at: row.started_at,
+            finished_at: row.finished_at,
+            current_page: row.current_page,
+            number_of_pages: row.number_of_pages,
         })
         .collect();
 
-    Ok(Json(UserEditionsResponse { success: true, editions }))
+    Ok(Json(UserEditionsResponse {
+        success: true,
+        editions,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -665,7 +757,7 @@ async fn get_user_review(
     let user_id = get_user_id(&state, &headers).await?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    let review = sqlx::query_as::<_, (f32, Option<String>, chrono::DateTime<Utc>, chrono::DateTime<Utc>)>(
+    let review = sqlx::query_as::<_, ReviewRow>(
         "SELECT rating, review_text, created_at, updated_at FROM user_reviews WHERE user_id = $1 AND edition_id = $2",
     )
     .bind(user_id)
@@ -673,14 +765,17 @@ async fn get_user_review(
     .fetch_optional(&state.db)
     .await?;
 
-    let review = review.map(|(rating, review_text, created_at, updated_at)| ReviewDetail {
-        rating,
-        review_text,
-        created_at,
-        updated_at,
+    let review = review.map(|row| ReviewDetail {
+        rating: row.rating,
+        review_text: row.review_text,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     });
 
-    Ok(Json(UserReviewResponse { success: true, review }))
+    Ok(Json(UserReviewResponse {
+        success: true,
+        review,
+    }))
 }
 
 async fn upsert_review(
@@ -826,7 +921,9 @@ async fn create_list(
     let user_id = get_user_id(&state, &headers).await?;
 
     if req.title.is_empty() || req.title.len() > 200 {
-        return Err(AuthError::Validation("Title must be 1-200 characters".into()));
+        return Err(AuthError::Validation(
+            "Title must be 1-200 characters".into(),
+        ));
     }
 
     let list_id = sqlx::query_scalar::<_, i32>(
@@ -850,7 +947,9 @@ async fn update_list(
     let user_id = get_user_id(&state, &headers).await?;
 
     if req.title.is_empty() || req.title.len() > 200 {
-        return Err(AuthError::Validation("Title must be 1-200 characters".into()));
+        return Err(AuthError::Validation(
+            "Title must be 1-200 characters".into(),
+        ));
     }
 
     let rows = sqlx::query(
@@ -894,14 +993,13 @@ async fn add_work_to_list(
     let user_id = get_user_id(&state, &headers).await?;
     let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    let owns = sqlx::query_scalar::<_, i32>(
-        "SELECT id FROM user_lists WHERE id = $1 AND user_id = $2",
-    )
-    .bind(list_id)
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .is_some();
+    let owns =
+        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = $1 AND user_id = $2")
+            .bind(list_id)
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await?
+            .is_some();
 
     if !owns {
         return Err(AuthError::Unauthorized);
@@ -939,14 +1037,13 @@ async fn remove_work_from_list(
     let user_id = get_user_id(&state, &headers).await?;
     let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    let owns = sqlx::query_scalar::<_, i32>(
-        "SELECT id FROM user_lists WHERE id = $1 AND user_id = $2",
-    )
-    .bind(list_id)
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .is_some();
+    let owns =
+        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = $1 AND user_id = $2")
+            .bind(list_id)
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await?
+            .is_some();
 
     if !owns {
         return Err(AuthError::Unauthorized);
@@ -967,7 +1064,7 @@ async fn list_my_lists(
 ) -> Result<Json<serde_json::Value>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let lists = sqlx::query_as::<_, (i32, String, Option<String>, i64)>(
+    let lists = sqlx::query_as::<_, ListRow>(
         r#"
         SELECT ul.id, ul.title, ul.description,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
@@ -981,7 +1078,7 @@ async fn list_my_lists(
     .await?;
 
     // Also get all work_ids per list for the AddToList component
-    let work_ids = sqlx::query_as::<_, (i32, i32)>(
+    let work_ids = sqlx::query_as::<_, ListWorkRow>(
         r#"
         SELECT ulw.list_id, ulw.work_id
         FROM user_list_works ulw
@@ -995,17 +1092,17 @@ async fn list_my_lists(
 
     let lists: Vec<_> = lists
         .into_iter()
-        .map(|(id, title, description, work_count)| {
+        .map(|list| {
             let works: Vec<String> = work_ids
                 .iter()
-                .filter(|(lid, _)| *lid == id)
-                .map(|(_, wid)| base36::encode(*wid as i64))
+                .filter(|lw| lw.list_id == list.id)
+                .map(|lw| base36::encode(lw.work_id as i64))
                 .collect();
             serde_json::json!({
-                "id": id,
-                "title": title,
-                "description": description,
-                "work_count": work_count,
+                "id": list.id,
+                "title": list.title,
+                "description": list.description,
+                "work_count": list.work_count,
                 "work_slugs": works,
             })
         })
@@ -1092,7 +1189,7 @@ async fn list_following(
 ) -> Result<Json<FollowingListResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let rows = sqlx::query_as::<_, (String, Option<String>)>(
+    let rows = sqlx::query_as::<_, FollowingRow>(
         r#"
         SELECT u.username, u.display_name
         FROM user_follows uf
@@ -1107,7 +1204,10 @@ async fn list_following(
 
     let following = rows
         .into_iter()
-        .map(|(username, display_name)| FollowingUser { username, display_name })
+        .map(|row| FollowingUser {
+            username: row.username,
+            display_name: row.display_name,
+        })
         .collect();
 
     Ok(Json(FollowingListResponse { following }))
@@ -1119,7 +1219,7 @@ async fn get_feed(
 ) -> Result<Json<FeedResponse>, AuthError> {
     let user_id = get_user_id(&state, &headers).await?;
 
-    let rows = sqlx::query_as::<_, (String, Option<String>, f32, Option<String>, i32, String, i32, Option<i64>, chrono::DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, FeedRow>(
         r#"
         SELECT u.username, u.display_name, ur.rating, ur.review_text,
                ur.edition_id, e.title, e.work_id, ec.cover_id, ur.updated_at
@@ -1139,18 +1239,16 @@ async fn get_feed(
 
     let feed = rows
         .into_iter()
-        .map(|(username, display_name, rating, review_text, edition_id, edition_title, work_id, cover_id, updated_at)| {
-            FeedItem {
-                username,
-                display_name,
-                rating,
-                review_text,
-                edition_slug: base36::encode(edition_id as i64),
-                edition_title,
-                work_slug: base36::encode(work_id as i64),
-                cover_id,
-                updated_at,
-            }
+        .map(|row| FeedItem {
+            username: row.username,
+            display_name: row.display_name,
+            rating: row.rating,
+            review_text: row.review_text,
+            edition_slug: base36::encode(row.edition_id as i64),
+            edition_title: row.title,
+            work_slug: base36::encode(row.work_id as i64),
+            cover_id: row.cover_id,
+            updated_at: row.updated_at,
         })
         .collect();
 

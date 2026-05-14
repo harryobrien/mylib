@@ -461,7 +461,156 @@ async fn health() -> &'static str {
     "ok"
 }
 
-// --- PATCH endpoints ---
+#[derive(sqlx::FromRow)]
+struct WorkCurrentRow {
+    title: String,
+    subtitle: Option<String>,
+    description: Option<String>,
+    first_publish_date: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct AuthorCurrentRow {
+    name: String,
+    fuller_name: Option<String>,
+    bio: Option<String>,
+    birth_date: Option<String>,
+    death_date: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct EditionCurrentRow {
+    title: String,
+    subtitle: Option<String>,
+    publish_date: Option<String>,
+    physical_format: Option<String>,
+    number_of_pages: Option<i32>,
+}
+
+#[derive(sqlx::FromRow)]
+struct EditionReviewRow {
+    user_id: i32,
+    username: String,
+    display_name: Option<String>,
+    rating: f32,
+    review_text: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct WorkReviewRow {
+    user_id: i32,
+    username: String,
+    display_name: Option<String>,
+    edition_id: i32,
+    rating: f32,
+    review_text: Option<String>,
+    title: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserRow {
+    id: i32,
+    username: String,
+    display_name: Option<String>,
+    bio: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct StatusCountRow {
+    status: String,
+    count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct ProfileReviewRow {
+    edition_id: i32,
+    work_id: i32,
+    rating: f32,
+    review_text: Option<String>,
+    title: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ProfileListRow {
+    id: i32,
+    title: String,
+    work_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct ListHeaderRow {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    username: String,
+    display_name: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct ListWorkRow {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    cover_id: Option<i64>,
+    position: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct UserListRow {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    work_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+#[allow(dead_code)]
+struct WorkListRow {
+    id: i32,
+    title: String,
+    username: String,
+    display_name: Option<String>,
+    follower_count: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct PopularWorkRow {
+    id: i32,
+    title: String,
+    cover_id: Option<i64>,
+    rating_avg: Option<f32>,
+    ratings_count: i32,
+}
+
+#[derive(sqlx::FromRow)]
+struct RecentReviewRow {
+    username: String,
+    display_name: Option<String>,
+    rating: f32,
+    review_text: Option<String>,
+    title: String,
+    id: i32,
+    work_id: i32,
+    cover_id: Option<i64>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct RecentListRow {
+    id: i32,
+    title: String,
+    username: String,
+    display_name: Option<String>,
+    work_count: i64,
+}
 
 const MAX_TITLE: usize = 500;
 const MAX_SUBTITLE: usize = 500;
@@ -576,7 +725,7 @@ async fn patch_work(
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
 
-    let current = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
+    let current = sqlx::query_as::<_, WorkCurrentRow>(
         "SELECT title, subtitle, description, first_publish_date FROM works WHERE id = $1",
     )
     .bind(id)
@@ -585,16 +734,19 @@ async fn patch_work(
     .ok_or(AppError::NotFound)?;
 
     let old_values = serde_json::json!({
-        "title": current.0,
-        "subtitle": current.1,
-        "description": current.2,
-        "first_publish_date": current.3,
+        "title": current.title,
+        "subtitle": current.subtitle,
+        "description": current.description,
+        "first_publish_date": current.first_publish_date,
     });
 
-    let new_title = patch.title.as_deref().unwrap_or(&current.0);
-    let new_subtitle = patch.subtitle.as_ref().or(current.1.as_ref());
-    let new_description = patch.description.as_ref().or(current.2.as_ref());
-    let new_first_publish_date = patch.first_publish_date.as_ref().or(current.3.as_ref());
+    let new_title = patch.title.as_deref().unwrap_or(&current.title);
+    let new_subtitle = patch.subtitle.as_ref().or(current.subtitle.as_ref());
+    let new_description = patch.description.as_ref().or(current.description.as_ref());
+    let new_first_publish_date = patch
+        .first_publish_date
+        .as_ref()
+        .or(current.first_publish_date.as_ref());
 
     sqlx::query(
         r#"UPDATE works SET title = $1, subtitle = $2, description = $3, first_publish_date = $4 WHERE id = $5"#,
@@ -627,7 +779,10 @@ async fn patch_work(
 
     indexer::reindex_work(&state.db, &state.search, id).await?;
 
-    Ok(Json(PatchResponse { success: true, slug }))
+    Ok(Json(PatchResponse {
+        success: true,
+        slug,
+    }))
 }
 
 async fn patch_author(
@@ -640,16 +795,7 @@ async fn patch_author(
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
 
-    let current = sqlx::query_as::<
-        _,
-        (
-            String,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-            Option<String>,
-        ),
-    >(
+    let current = sqlx::query_as::<_, AuthorCurrentRow>(
         "SELECT name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = $1",
     )
     .bind(id)
@@ -658,18 +804,18 @@ async fn patch_author(
     .ok_or(AppError::NotFound)?;
 
     let old_values = serde_json::json!({
-        "name": current.0,
-        "fuller_name": current.1,
-        "bio": current.2,
-        "birth_date": current.3,
-        "death_date": current.4,
+        "name": current.name,
+        "fuller_name": current.fuller_name,
+        "bio": current.bio,
+        "birth_date": current.birth_date,
+        "death_date": current.death_date,
     });
 
-    let new_name = patch.name.as_deref().unwrap_or(&current.0);
-    let new_fuller_name = patch.fuller_name.as_ref().or(current.1.as_ref());
-    let new_bio = patch.bio.as_ref().or(current.2.as_ref());
-    let new_birth_date = patch.birth_date.as_ref().or(current.3.as_ref());
-    let new_death_date = patch.death_date.as_ref().or(current.4.as_ref());
+    let new_name = patch.name.as_deref().unwrap_or(&current.name);
+    let new_fuller_name = patch.fuller_name.as_ref().or(current.fuller_name.as_ref());
+    let new_bio = patch.bio.as_ref().or(current.bio.as_ref());
+    let new_birth_date = patch.birth_date.as_ref().or(current.birth_date.as_ref());
+    let new_death_date = patch.death_date.as_ref().or(current.death_date.as_ref());
 
     sqlx::query(
         r#"UPDATE authors SET name = $1, fuller_name = $2, bio = $3, birth_date = $4, death_date = $5 WHERE id = $6"#,
@@ -704,7 +850,10 @@ async fn patch_author(
 
     indexer::reindex_author(&state.db, &state.search, id).await?;
 
-    Ok(Json(PatchResponse { success: true, slug }))
+    Ok(Json(PatchResponse {
+        success: true,
+        slug,
+    }))
 }
 
 async fn patch_edition(
@@ -717,7 +866,7 @@ async fn patch_edition(
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
     let user_id = get_user_id_required(&state, &headers).await?;
 
-    let current = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>, Option<i32>)>(
+    let current = sqlx::query_as::<_, EditionCurrentRow>(
         "SELECT title, subtitle, publish_date, physical_format, number_of_pages FROM editions WHERE id = $1",
     )
     .bind(id)
@@ -726,18 +875,24 @@ async fn patch_edition(
     .ok_or(AppError::NotFound)?;
 
     let old_values = serde_json::json!({
-        "title": current.0,
-        "subtitle": current.1,
-        "publish_date": current.2,
-        "physical_format": current.3,
-        "number_of_pages": current.4,
+        "title": current.title,
+        "subtitle": current.subtitle,
+        "publish_date": current.publish_date,
+        "physical_format": current.physical_format,
+        "number_of_pages": current.number_of_pages,
     });
 
-    let new_title = patch.title.as_deref().unwrap_or(&current.0);
-    let new_subtitle = patch.subtitle.as_ref().or(current.1.as_ref());
-    let new_publish_date = patch.publish_date.as_ref().or(current.2.as_ref());
-    let new_physical_format = patch.physical_format.as_ref().or(current.3.as_ref());
-    let new_number_of_pages = patch.number_of_pages.or(current.4);
+    let new_title = patch.title.as_deref().unwrap_or(&current.title);
+    let new_subtitle = patch.subtitle.as_ref().or(current.subtitle.as_ref());
+    let new_publish_date = patch
+        .publish_date
+        .as_ref()
+        .or(current.publish_date.as_ref());
+    let new_physical_format = patch
+        .physical_format
+        .as_ref()
+        .or(current.physical_format.as_ref());
+    let new_number_of_pages = patch.number_of_pages.or(current.number_of_pages);
 
     sqlx::query(
         r#"UPDATE editions SET title = $1, subtitle = $2, publish_date = $3, physical_format = $4, number_of_pages = $5 WHERE id = $6"#,
@@ -772,7 +927,10 @@ async fn patch_edition(
 
     indexer::reindex_edition(&state.db, &state.search, id).await?;
 
-    Ok(Json(PatchResponse { success: true, slug }))
+    Ok(Json(PatchResponse {
+        success: true,
+        slug,
+    }))
 }
 
 async fn get_edition_reviews(
@@ -781,7 +939,7 @@ async fn get_edition_reviews(
 ) -> Result<Json<ReviewsResponse>, AppError> {
     let edition_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let rows = sqlx::query_as::<_, (i32, String, Option<String>, f32, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, EditionReviewRow>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.rating, ur.review_text,
                ur.created_at, ur.updated_at
@@ -797,12 +955,16 @@ async fn get_edition_reviews(
 
     let reviews = rows
         .into_iter()
-        .map(|(user_id, username, display_name, rating, review_text, created_at, updated_at)| {
-            ReviewItem {
-                user_id, username, display_name, rating, review_text,
-                edition_slug: None, edition_title: None,
-                created_at, updated_at,
-            }
+        .map(|row| ReviewItem {
+            user_id: row.user_id,
+            username: row.username,
+            display_name: row.display_name,
+            rating: row.rating,
+            review_text: row.review_text,
+            edition_slug: None,
+            edition_title: None,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
         .collect();
 
@@ -815,7 +977,7 @@ async fn get_work_reviews(
 ) -> Result<Json<ReviewsResponse>, AppError> {
     let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let rows = sqlx::query_as::<_, (i32, String, Option<String>, i32, f32, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, WorkReviewRow>(
         r#"
         SELECT ur.user_id, u.username, u.display_name, ur.edition_id, ur.rating,
                ur.review_text, e.title, ur.created_at, ur.updated_at
@@ -832,13 +994,16 @@ async fn get_work_reviews(
 
     let reviews = rows
         .into_iter()
-        .map(|(user_id, username, display_name, edition_id, rating, review_text, edition_title, created_at, updated_at)| {
-            ReviewItem {
-                user_id, username, display_name, rating, review_text,
-                edition_slug: Some(base36::encode(edition_id as i64)),
-                edition_title: Some(edition_title),
-                created_at, updated_at,
-            }
+        .map(|row| ReviewItem {
+            user_id: row.user_id,
+            username: row.username,
+            display_name: row.display_name,
+            rating: row.rating,
+            review_text: row.review_text,
+            edition_slug: Some(base36::encode(row.edition_id as i64)),
+            edition_title: Some(row.title),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
         .collect();
 
@@ -849,7 +1014,7 @@ async fn get_user_profile(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
-    let user = sqlx::query_as::<_, (i32, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(
+    let user = sqlx::query_as::<_, UserRow>(
         "SELECT id, username, display_name, bio, created_at FROM users WHERE LOWER(username) = LOWER($1)",
     )
     .bind(&username)
@@ -857,9 +1022,15 @@ async fn get_user_profile(
     .await?
     .ok_or(AppError::NotFound)?;
 
-    let (user_id, username, display_name, bio, created_at) = user;
+    let (user_id, username, display_name, bio, created_at) = (
+        user.id,
+        user.username,
+        user.display_name,
+        user.bio,
+        user.created_at,
+    );
 
-    let stats = sqlx::query_as::<_, (String, i64)>(
+    let stats = sqlx::query_as::<_, StatusCountRow>(
         r#"
         SELECT status, COUNT(*) as count
         FROM user_editions
@@ -877,17 +1048,17 @@ async fn get_user_profile(
         finished: 0,
         did_not_finish: 0,
     };
-    for (status, count) in &stats {
-        match status.as_str() {
-            "want_to_read" => reading_stats.want_to_read = *count,
-            "reading" => reading_stats.reading = *count,
-            "finished" => reading_stats.finished = *count,
-            "did_not_finish" => reading_stats.did_not_finish = *count,
+    for row in &stats {
+        match row.status.as_str() {
+            "want_to_read" => reading_stats.want_to_read = row.count,
+            "reading" => reading_stats.reading = row.count,
+            "finished" => reading_stats.finished = row.count,
+            "did_not_finish" => reading_stats.did_not_finish = row.count,
             _ => {}
         }
     }
 
-    let rows = sqlx::query_as::<_, (i32, i32, f32, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let rows = sqlx::query_as::<_, ProfileReviewRow>(
         r#"
         SELECT ur.edition_id, e.work_id, ur.rating, ur.review_text, e.title,
                ur.created_at, ur.updated_at
@@ -903,34 +1074,30 @@ async fn get_user_profile(
 
     let reviews = rows
         .into_iter()
-        .map(|(edition_id, work_id, rating, review_text, edition_title, created_at, updated_at)| {
-            ProfileReviewItem {
-                edition_slug: base36::encode(edition_id as i64),
-                work_slug: base36::encode(work_id as i64),
-                rating,
-                review_text,
-                edition_title,
-                created_at,
-                updated_at,
-            }
+        .map(|row| ProfileReviewItem {
+            edition_slug: base36::encode(row.edition_id as i64),
+            work_slug: base36::encode(row.work_id as i64),
+            rating: row.rating,
+            review_text: row.review_text,
+            edition_title: row.title,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
         .collect();
 
-    let followers_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM user_follows WHERE following_id = $1",
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let followers_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE following_id = $1")
+            .bind(user_id)
+            .fetch_one(&state.db)
+            .await?;
 
-    let following_count = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM user_follows WHERE follower_id = $1",
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await?;
+    let following_count =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE follower_id = $1")
+            .bind(user_id)
+            .fetch_one(&state.db)
+            .await?;
 
-    let lists = sqlx::query_as::<_, (i32, String, i64)>(
+    let lists = sqlx::query_as::<_, ProfileListRow>(
         r#"
         SELECT ul.id, ul.title,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
@@ -945,7 +1112,11 @@ async fn get_user_profile(
 
     let lists = lists
         .into_iter()
-        .map(|(id, title, work_count)| ProfileListItem { id, title, work_count })
+        .map(|row| ProfileListItem {
+            id: row.id,
+            title: row.title,
+            work_count: row.work_count,
+        })
         .collect();
 
     Ok(Json(UserProfileResponse {
@@ -965,7 +1136,7 @@ async fn get_list(
     State(state): State<Arc<AppState>>,
     Path(list_id): Path<i32>,
 ) -> Result<Json<ListDetailResponse>, AppError> {
-    let list = sqlx::query_as::<_, (i32, String, Option<String>, String, Option<String>, chrono::DateTime<chrono::Utc>)>(
+    let list = sqlx::query_as::<_, ListHeaderRow>(
         r#"
         SELECT ul.id, ul.title, ul.description, u.username, u.display_name, ul.created_at
         FROM user_lists ul
@@ -978,9 +1149,16 @@ async fn get_list(
     .await?
     .ok_or(AppError::NotFound)?;
 
-    let (id, title, description, username, display_name, created_at) = list;
+    let (id, title, description, username, display_name, created_at) = (
+        list.id,
+        list.title,
+        list.description,
+        list.username,
+        list.display_name,
+        list.created_at,
+    );
 
-    let works = sqlx::query_as::<_, (i32, String, Option<String>, Option<i64>, i32)>(
+    let works = sqlx::query_as::<_, ListWorkRow>(
         r#"
         SELECT w.id, w.title, w.description, wc.cover_id, ulw.position
         FROM user_list_works ulw
@@ -996,12 +1174,18 @@ async fn get_list(
 
     let works = works
         .into_iter()
-        .map(|(work_id, work_title, work_description, cover_id, position)| ListWorkItem {
-            slug: base36::encode(work_id as i64),
-            title: work_title,
-            description: work_description.map(|d| if d.len() > 200 { format!("{}...", &d[..200]) } else { d }),
-            cover_id,
-            position,
+        .map(|row| ListWorkItem {
+            slug: base36::encode(row.id as i64),
+            title: row.title,
+            description: row.description.map(|d| {
+                if d.len() > 200 {
+                    format!("{}...", &d[..200])
+                } else {
+                    d
+                }
+            }),
+            cover_id: row.cover_id,
+            position: row.position,
         })
         .collect();
 
@@ -1020,15 +1204,14 @@ async fn get_user_lists(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
 ) -> Result<Json<ListsResponse>, AppError> {
-    let user_id = sqlx::query_scalar::<_, i32>(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)",
-    )
-    .bind(&username)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(AppError::NotFound)?;
+    let user_id =
+        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+            .bind(&username)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
 
-    let lists = sqlx::query_as::<_, (i32, String, Option<String>, i64)>(
+    let lists = sqlx::query_as::<_, UserListRow>(
         r#"
         SELECT ul.id, ul.title, ul.description,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
@@ -1043,7 +1226,12 @@ async fn get_user_lists(
 
     let lists = lists
         .into_iter()
-        .map(|(id, title, description, work_count)| ListSummaryItem { id, title, description, work_count })
+        .map(|row| ListSummaryItem {
+            id: row.id,
+            title: row.title,
+            description: row.description,
+            work_count: row.work_count,
+        })
         .collect();
 
     Ok(Json(ListsResponse { lists }))
@@ -1055,7 +1243,7 @@ async fn get_work_lists(
 ) -> Result<Json<WorkListsResponse>, AppError> {
     let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let lists = sqlx::query_as::<_, (i32, String, String, Option<String>, i64)>(
+    let lists = sqlx::query_as::<_, WorkListRow>(
         r#"
         SELECT ul.id, ul.title, u.username, u.display_name,
                (SELECT COUNT(*) FROM user_follows WHERE following_id = u.id) as follower_count
@@ -1072,7 +1260,12 @@ async fn get_work_lists(
 
     let lists = lists
         .into_iter()
-        .map(|(id, title, username, display_name, _)| WorkListItem { id, title, username, display_name })
+        .map(|row| WorkListItem {
+            id: row.id,
+            title: row.title,
+            username: row.username,
+            display_name: row.display_name,
+        })
         .collect();
 
     Ok(Json(WorkListsResponse { lists }))
@@ -1081,7 +1274,7 @@ async fn get_work_lists(
 async fn get_popular_works(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<PopularWorkItem>>, AppError> {
-    let works = sqlx::query_as::<_, (i32, String, Option<i64>, Option<f32>, i32)>(
+    let works = sqlx::query_as::<_, PopularWorkRow>(
         r#"
         SELECT w.id, w.title, ec.cover_id,
                (wp.ratings_sum / NULLIF(wp.ratings_count, 0))::float4 as rating_avg,
@@ -1106,12 +1299,12 @@ async fn get_popular_works(
 
     let works = works
         .into_iter()
-        .map(|(id, title, cover_id, rating_avg, ratings_count)| PopularWorkItem {
-            slug: base36::encode(id as i64),
-            title,
-            cover_id,
-            rating_avg,
-            ratings_count,
+        .map(|row| PopularWorkItem {
+            slug: base36::encode(row.id as i64),
+            title: row.title,
+            cover_id: row.cover_id,
+            rating_avg: row.rating_avg,
+            ratings_count: row.ratings_count,
         })
         .collect();
 
@@ -1121,7 +1314,7 @@ async fn get_popular_works(
 async fn get_recent_reviews(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<RecentReviewItem>>, AppError> {
-    let reviews = sqlx::query_as::<_, (String, Option<String>, f32, Option<String>, String, i32, i32, Option<i64>, chrono::DateTime<chrono::Utc>)>(
+    let reviews = sqlx::query_as::<_, RecentReviewRow>(
         r#"
         SELECT u.username, u.display_name, ur.rating, ur.review_text,
                e.title, e.id, e.work_id, ec.cover_id, ur.updated_at
@@ -1139,16 +1332,16 @@ async fn get_recent_reviews(
 
     let reviews = reviews
         .into_iter()
-        .map(|(username, display_name, rating, review_text, edition_title, edition_id, work_id, cover_id, updated_at)| RecentReviewItem {
-            username,
-            display_name,
-            rating,
-            review_text,
-            edition_title,
-            work_slug: base36::encode(work_id as i64),
-            edition_slug: base36::encode(edition_id as i64),
-            cover_id,
-            updated_at,
+        .map(|row| RecentReviewItem {
+            username: row.username,
+            display_name: row.display_name,
+            rating: row.rating,
+            review_text: row.review_text,
+            edition_title: row.title,
+            work_slug: base36::encode(row.work_id as i64),
+            edition_slug: base36::encode(row.id as i64),
+            cover_id: row.cover_id,
+            updated_at: row.updated_at,
         })
         .collect();
 
@@ -1158,7 +1351,7 @@ async fn get_recent_reviews(
 async fn get_recent_lists(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<RecentListItem>>, AppError> {
-    let lists = sqlx::query_as::<_, (i32, String, String, Option<String>, i64)>(
+    let lists = sqlx::query_as::<_, RecentListRow>(
         r#"
         SELECT ul.id, ul.title, u.username, u.display_name,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
@@ -1174,12 +1367,12 @@ async fn get_recent_lists(
 
     let lists = lists
         .into_iter()
-        .map(|(id, title, username, display_name, work_count)| RecentListItem {
-            id,
-            title,
-            username,
-            display_name,
-            work_count,
+        .map(|row| RecentListItem {
+            id: row.id,
+            title: row.title,
+            username: row.username,
+            display_name: row.display_name,
+            work_count: row.work_count,
         })
         .collect();
 

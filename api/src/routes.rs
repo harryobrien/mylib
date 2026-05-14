@@ -121,6 +121,37 @@ struct WorkListsResponse {
     lists: Vec<WorkListItem>,
 }
 
+#[derive(Serialize)]
+struct PopularWorkItem {
+    slug: String,
+    title: String,
+    cover_id: Option<i64>,
+    rating_avg: Option<f32>,
+    ratings_count: i32,
+}
+
+#[derive(Serialize)]
+struct RecentReviewItem {
+    username: String,
+    display_name: Option<String>,
+    rating: f32,
+    review_text: Option<String>,
+    edition_title: String,
+    work_slug: String,
+    edition_slug: String,
+    cover_id: Option<i64>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct RecentListItem {
+    id: i32,
+    title: String,
+    username: String,
+    display_name: Option<String>,
+    work_count: i64,
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         // Search endpoints
@@ -141,6 +172,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/users/{username}/lists", get(get_user_lists))
         .route("/lists/{id}", get(get_list))
         .route("/works/{slug}/lists", get(get_work_lists))
+        .route("/discover/popular", get(get_popular_works))
+        .route("/discover/reviews", get(get_recent_reviews))
+        .route("/discover/lists", get(get_recent_lists))
         .route("/health", get(health))
 }
 
@@ -1042,6 +1076,114 @@ async fn get_work_lists(
         .collect();
 
     Ok(Json(WorkListsResponse { lists }))
+}
+
+async fn get_popular_works(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<PopularWorkItem>>, AppError> {
+    let works = sqlx::query_as::<_, (i32, String, Option<i64>, Option<f32>, i32)>(
+        r#"
+        SELECT w.id, w.title, ec.cover_id,
+               (wp.ratings_sum / NULLIF(wp.ratings_count, 0))::float4 as rating_avg,
+               wp.ratings_count
+        FROM work_popularity wp
+        JOIN works w ON wp.work_id = w.id
+        LEFT JOIN LATERAL (
+            SELECT ec2.cover_id FROM editions e2
+            JOIN edition_covers ec2 ON e2.id = ec2.edition_id AND ec2.position = 0
+            WHERE e2.work_id = w.id LIMIT 1
+        ) ec ON true
+        WHERE wp.ratings_count > 0
+        ORDER BY compute_popularity_score(
+            wp.ratings_count, wp.ratings_sum::integer,
+            wp.want_to_read, wp.currently_reading, wp.already_read
+        ) DESC
+        LIMIT 20
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let works = works
+        .into_iter()
+        .map(|(id, title, cover_id, rating_avg, ratings_count)| PopularWorkItem {
+            slug: base36::encode(id as i64),
+            title,
+            cover_id,
+            rating_avg,
+            ratings_count,
+        })
+        .collect();
+
+    Ok(Json(works))
+}
+
+async fn get_recent_reviews(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<RecentReviewItem>>, AppError> {
+    let reviews = sqlx::query_as::<_, (String, Option<String>, f32, Option<String>, String, i32, i32, Option<i64>, chrono::DateTime<chrono::Utc>)>(
+        r#"
+        SELECT u.username, u.display_name, ur.rating, ur.review_text,
+               e.title, e.id, e.work_id, ec.cover_id, ur.updated_at
+        FROM user_reviews ur
+        JOIN users u ON ur.user_id = u.id
+        JOIN editions e ON ur.edition_id = e.id
+        LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
+        WHERE ur.review_text IS NOT NULL
+        ORDER BY ur.updated_at DESC
+        LIMIT 10
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let reviews = reviews
+        .into_iter()
+        .map(|(username, display_name, rating, review_text, edition_title, edition_id, work_id, cover_id, updated_at)| RecentReviewItem {
+            username,
+            display_name,
+            rating,
+            review_text,
+            edition_title,
+            work_slug: base36::encode(work_id as i64),
+            edition_slug: base36::encode(edition_id as i64),
+            cover_id,
+            updated_at,
+        })
+        .collect();
+
+    Ok(Json(reviews))
+}
+
+async fn get_recent_lists(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<RecentListItem>>, AppError> {
+    let lists = sqlx::query_as::<_, (i32, String, String, Option<String>, i64)>(
+        r#"
+        SELECT ul.id, ul.title, u.username, u.display_name,
+               (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
+        FROM user_lists ul
+        JOIN users u ON ul.user_id = u.id
+        WHERE (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) > 0
+        ORDER BY ul.updated_at DESC
+        LIMIT 10
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    let lists = lists
+        .into_iter()
+        .map(|(id, title, username, display_name, work_count)| RecentListItem {
+            id,
+            title,
+            username,
+            display_name,
+            work_count,
+        })
+        .collect();
+
+    Ok(Json(lists))
 }
 
 pub enum AppError {

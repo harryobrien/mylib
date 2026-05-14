@@ -57,7 +57,7 @@ export default function UserLists({ username }: Props) {
                 <span className="profile-list-count">{l.work_count} {l.work_count === 1 ? 'book' : 'books'}</span>
               </a>
               {isOwner && (
-                <button onClick={() => handleDelete(l.id)} className="profile-list-delete" title="Delete list">&times;</button>
+                <button type="button" onClick={() => handleDelete(l.id)} className="profile-list-delete" title="Delete list" aria-label={`Delete list ${l.title}`}>&times;</button>
               )}
             </div>
           ))}
@@ -73,12 +73,12 @@ export default function UserLists({ username }: Props) {
               onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
               placeholder="List name..."
               maxLength={200}
-              autoFocus
+            autoFocus
             />
-            <button onClick={handleCreate} className="review-submit-btn">Create</button>
+            <button type="button" onClick={handleCreate} className="review-submit-btn">Create</button>
           </div>
         ) : (
-          <button onClick={() => setCreating(true)} className="add-to-list-new" style={{ marginTop: '8px' }}>
+          <button type="button" onClick={() => setCreating(true)} className="add-to-list-new" style={{ marginTop: '8px' }}>
             + New list
           </button>
         )

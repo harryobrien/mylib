@@ -741,7 +741,7 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
 </head>
 <body>
   <div class="container">
-    <header>
+    <header role="navigation" aria-label="Main navigation">
       <div class="header-top">
         <h1><a href="/" id="logo"><em>my</em><u>lib</u></a></h1>
         <div class="header-right">
@@ -750,9 +750,9 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       </div>
       {showPortal && <SearchPortal client:only="react" />}
     </header>
-    <div class="content">
+    <main role="main">
       <slot />
-    </div>
+    </main>
   </div>
   <script>
     import { clearSearch } from '../stores/search';

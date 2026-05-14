@@ -56,14 +56,15 @@ export default function ProfileEditor({ username }: Props) {
   }
 
   if (!editing) {
-    return <button onClick={startEditing} className="review-edit-btn">Edit Profile</button>;
+    return <button type="button" onClick={startEditing} className="review-edit-btn">Edit Profile</button>;
   }
 
   return (
     <div className="profile-editor">
       <div className="profile-editor-field">
-        <label>Username</label>
+        <label htmlFor="profile-username">Username</label>
         <input
+          id="profile-username"
           type="text"
           value={formUsername}
           onChange={e => setFormUsername(e.target.value)}
@@ -71,8 +72,9 @@ export default function ProfileEditor({ username }: Props) {
         />
       </div>
       <div className="profile-editor-field">
-        <label>Display Name</label>
+        <label htmlFor="profile-display-name">Display Name</label>
         <input
+          id="profile-display-name"
           type="text"
           value={displayName}
           onChange={e => setDisplayName(e.target.value)}
@@ -81,8 +83,9 @@ export default function ProfileEditor({ username }: Props) {
         />
       </div>
       <div className="profile-editor-field">
-        <label>Bio</label>
+        <label htmlFor="profile-bio">Bio</label>
         <textarea
+          id="profile-bio"
           value={bio}
           onChange={e => setBio(e.target.value)}
           placeholder="Tell us about yourself..."
@@ -90,12 +93,12 @@ export default function ProfileEditor({ username }: Props) {
           maxLength={5000}
         />
       </div>
-      {error && <p className="profile-editor-error">{error}</p>}
+      {error && <p className="profile-editor-error" role="alert" aria-live="assertive">{error}</p>}
       <div className="review-actions">
-        <button onClick={handleSave} disabled={saving} className="review-submit-btn">
+        <button type="button" onClick={handleSave} disabled={saving} className="review-submit-btn">
           {saving ? 'Saving...' : 'Save'}
         </button>
-        <button onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
+        <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
       </div>
     </div>
   );

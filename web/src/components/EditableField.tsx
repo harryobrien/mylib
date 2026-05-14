@@ -110,6 +110,7 @@ export default function EditableField({
       {label}
       {value || <span className="editable-placeholder">{placeholder}</span>}
       <button
+        type="button"
         className="edit-pencil"
         onClick={() => setIsEditing(true)}
         title={`Edit ${field}`}

@@ -83,7 +83,7 @@ export default function ReviewForm({ editionSlug }: Props) {
           {existingReview.review_text && (
             <p className="review-text-preview">{existingReview.review_text}</p>
           )}
-          <button onClick={startEditing} className="review-edit-btn">Edit</button>
+          <button type="button" onClick={startEditing} className="review-edit-btn">Edit</button>
         </div>
       </div>
     );
@@ -124,12 +124,12 @@ export default function ReviewForm({ editionSlug }: Props) {
           maxLength={10000}
         />
         <div className="review-actions">
-          <button onClick={handleSubmit} disabled={submitting || (!rating && !existingReview?.rating)} className="review-submit-btn">
+          <button type="button" onClick={handleSubmit} disabled={submitting || (!rating && !existingReview?.rating)} className="review-submit-btn">
             {submitting ? 'Saving...' : 'Save'}
           </button>
-          <button onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
+          <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
           {hasReview && (
-            <button onClick={handleDelete} disabled={submitting} className="review-delete-btn">
+            <button type="button" onClick={handleDelete} disabled={submitting} className="review-delete-btn" aria-label="Delete review">
               Delete
             </button>
           )}

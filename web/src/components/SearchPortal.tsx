@@ -45,7 +45,7 @@ export default function SearchPortal() {
         </a>
       ))}
       {history.length > 0 && (
-        <button className="search-portal-clear" onClick={clearHistory} title="Clear history">
+        <button type="button" className="search-portal-clear" onClick={clearHistory} title="Clear history" aria-label="Clear search history">
           &times;
         </button>
       )}

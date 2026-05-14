@@ -45,7 +45,7 @@ export default function AddToList({ workSlug }: Props) {
 
   return (
     <div className="add-to-list">
-      <button onClick={() => setOpen(!open)} className="add-to-list-btn">
+      <button type="button" onClick={() => setOpen(!open)} className="add-to-list-btn">
         {open ? '− Lists' : '+ List'}
       </button>
       {open && (
@@ -73,12 +73,12 @@ export default function AddToList({ workSlug }: Props) {
                 onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false); }}
                 placeholder="List name..."
                 maxLength={200}
-                autoFocus
+              autoFocus
               />
-              <button onClick={handleCreate} className="review-submit-btn">Add</button>
+              <button type="button" onClick={handleCreate} className="review-submit-btn">Add</button>
             </div>
           ) : (
-            <button onClick={() => setCreating(true)} className="add-to-list-new">
+            <button type="button" onClick={() => setCreating(true)} className="add-to-list-new">
               + New list
             </button>
           )}

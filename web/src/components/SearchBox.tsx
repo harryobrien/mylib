@@ -279,7 +279,7 @@ export default function SearchBox() {
           {w.cover_id ? (
             <img
               src={`https://covers.openlibrary.org/b/id/${w.cover_id}-S.jpg`}
-              alt=""
+              alt={`Cover of ${w.title}`}
               width={33}
               height={50}
               loading="lazy"
@@ -331,7 +331,7 @@ export default function SearchBox() {
           {e.cover_id ? (
             <img
               src={`https://covers.openlibrary.org/b/id/${e.cover_id}-S.jpg`}
-              alt=""
+              alt={`Cover of ${e.title}`}
               width={33}
               height={50}
               loading="lazy"
@@ -354,7 +354,7 @@ export default function SearchBox() {
   }
 
   return (
-    <div className="search-container">
+    <search className="search-container" aria-label="Book search">
       <div className="search-input-wrapper">
         <input
           type="text"
@@ -363,17 +363,18 @@ export default function SearchBox() {
           onKeyDown={handleKeyDown}
           placeholder="Search books, authors, ISBNs..."
           autoFocus
+          aria-label="Search books, authors, ISBNs"
         />
         {query && (
-          <button className="search-clear" onClick={handleClear} type="button">
+          <button className="search-clear" onClick={handleClear} type="button" aria-label="Clear search">
             &times;
           </button>
         )}
       </div>
 
-      {(query || hasResults) && <div className="stats">{stats}</div>}
+      {(query || hasResults) && <div className="stats" aria-live="polite">{stats}</div>}
 
-      <div className="results">
+      <div className="results" aria-live="polite">
         {!hasResults && query && <div className="empty">No results</div>}
 
         {grouped.featuredAuthor && (
@@ -611,6 +612,6 @@ export default function SearchBox() {
           .result { padding: 10px 12px; }
         }
       `}</style>
-    </div>
+    </search>
   );
 }

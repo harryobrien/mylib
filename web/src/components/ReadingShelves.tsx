@@ -45,7 +45,7 @@ function Shelf({ title, editions }: { title: string; editions: Edition[] }) {
             {e.cover_id ? (
               <img
                 src={`https://covers.openlibrary.org/b/id/${e.cover_id}-M.jpg`}
-                alt=""
+                alt={`Cover of ${e.title}`}
                 className="shelf-cover"
               />
             ) : (

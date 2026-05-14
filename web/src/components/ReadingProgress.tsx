@@ -81,6 +81,7 @@ export default function ReadingProgress({ slug }: Props) {
               />
             ) : (
               <button
+                type="button"
                 className="progress-page-btn"
                 onClick={() => { setPageValue(String(current_page || 0)); setEditingPage(true); }}
               >
@@ -108,11 +109,11 @@ export default function ReadingProgress({ slug }: Props) {
                 autoFocus
               />
             ) : started_at ? (
-              <button className="date-btn" onClick={() => setEditingStart(true)}>
+              <button type="button" className="date-btn" onClick={() => setEditingStart(true)}>
                 {formatDate(started_at)}
               </button>
             ) : (
-              <button className="date-btn date-btn-empty" onClick={() => setEditingStart(true)}>
+              <button type="button" className="date-btn date-btn-empty" onClick={() => setEditingStart(true)}>
                 set date
               </button>
             )}
@@ -131,11 +132,11 @@ export default function ReadingProgress({ slug }: Props) {
                 autoFocus
               />
             ) : finished_at ? (
-              <button className="date-btn" onClick={() => setEditingFinish(true)}>
+              <button type="button" className="date-btn" onClick={() => setEditingFinish(true)}>
                 {formatDate(finished_at)}
               </button>
             ) : (
-              <button className="date-btn date-btn-empty" onClick={() => setEditingFinish(true)}>
+              <button type="button" className="date-btn date-btn-empty" onClick={() => setEditingFinish(true)}>
                 set date
               </button>
             )}

@@ -33,6 +33,7 @@ export default function FollowButton({ username }: Props) {
 
   return (
     <button
+      type="button"
       onClick={toggle}
       disabled={loading}
       className={following ? 'follow-btn follow-btn-following' : 'follow-btn'}

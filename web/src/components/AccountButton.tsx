@@ -41,11 +41,11 @@ export default function AccountButton() {
     <span className="account-text">
       <a href={`/users/${user.username}`} className="account-link">{user.display_name || user.username}</a>
       <span className="account-sep"> · </span>
-      <a href="#" onClick={(e) => { e.preventDefault(); toggleEditingMode(); }} className={editing ? 'account-link account-link-active' : 'account-link'}>
+      <button type="button" onClick={toggleEditingMode} className={editing ? 'account-link account-link-active' : 'account-link'}>
         {editing ? 'Editing' : 'Edit'}
-      </a>
+      </button>
       <span className="account-sep"> · </span>
-      <a href="#" onClick={handleLogout} className="account-link">Logout</a>
+      <button type="button" onClick={handleLogout} className="account-link">Logout</button>
     </span>
   );
 }

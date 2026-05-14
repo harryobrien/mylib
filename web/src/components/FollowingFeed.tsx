@@ -38,7 +38,7 @@ export default function FollowingFeed() {
               <a href={`/works/${item.work_slug}/${item.edition_slug}`} className="feed-cover">
                 <img
                   src={`https://covers.openlibrary.org/b/id/${item.cover_id}-S.jpg`}
-                  alt=""
+                  alt={`Cover of ${item.edition_title}`}
                   width={33}
                   height={50}
                   loading="lazy"

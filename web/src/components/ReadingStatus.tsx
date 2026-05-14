@@ -58,10 +58,10 @@ export default function ReadingStatus({ slug }: Props) {
 
   return (
     <span className="status-btns">
-      <button onClick={() => setEditionStatus(status === 'want_to_read' ? null : 'want_to_read')} className={btnClass('want_to_read')} title="Want to read">want</button>
-      <button onClick={() => setEditionStatus(status === 'reading' ? null : 'reading')} className={btnClass('reading')} title="Currently reading">reading</button>
-      <button onClick={() => setEditionStatus(status === 'finished' ? null : 'finished')} className={btnClass('finished')} title="Finished">finished</button>
-      <button onClick={() => setEditionStatus(status === 'did_not_finish' ? null : 'did_not_finish')} className={btnClass('did_not_finish', true)} title="Did not finish">dnf</button>
+      <button type="button" onClick={() => setEditionStatus(status === 'want_to_read' ? null : 'want_to_read')} className={btnClass('want_to_read')} title="Want to read">want</button>
+      <button type="button" onClick={() => setEditionStatus(status === 'reading' ? null : 'reading')} className={btnClass('reading')} title="Currently reading">reading</button>
+      <button type="button" onClick={() => setEditionStatus(status === 'finished' ? null : 'finished')} className={btnClass('finished')} title="Finished">finished</button>
+      <button type="button" onClick={() => setEditionStatus(status === 'did_not_finish' ? null : 'did_not_finish')} className={btnClass('did_not_finish', true)} title="Did not finish">dnf</button>
     </span>
   );
 }

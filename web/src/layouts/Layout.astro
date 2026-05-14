@@ -462,6 +462,25 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       line-height: 1.6;
     }
     .reviews-section { margin-bottom: 10px; }
+
+    @media (max-width: 600px) {
+      body { padding: 0; }
+      .container { border: none; min-height: 100vh; padding: 12px; }
+
+      .status-btns { gap: 6px; }
+      .status-btn { padding: 6px 10px; font-size: 13px; }
+      .search-portal { padding: 6px 12px; }
+      .search-portal-clear { padding: 6px 10px; }
+
+      .progress-page-btn { min-width: 30px; padding: 4px; }
+      .reading-dates { flex-direction: column; gap: 4px; }
+      .date-btn { padding: 4px 0; }
+
+      .review-edit-btn, .review-cancel-btn, .review-delete-btn, .review-submit-btn {
+        padding: 8px 14px; font-size: 14px;
+      }
+      .review-textarea { font-size: 16px; }
+    }
   </style>
 </head>
 <body>

@@ -605,6 +605,11 @@ export default function SearchBox() {
           margin-top: 6px;
           font-style: italic;
         }
+        @media (max-width: 600px) {
+          .search-container input { font-size: 16px; padding: 12px 14px; padding-right: 44px; }
+          .search-clear { padding: 8px 12px; font-size: 28px; }
+          .result { padding: 10px 12px; }
+        }
       `}</style>
     </div>
   );

@@ -10,6 +10,7 @@
     "@astrojs/node": "^8.2.0",
     "@astrojs/react": "^3.0.0",
     "@nanostores/react": "^1.0.0",
+    "@vite-pwa/astro": "^1.2.0",
     "astro": "^4.4.0",
     "nanostores": "^1.1.1",
     "react": "^18.2.0",

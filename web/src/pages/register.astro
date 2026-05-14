@@ -88,6 +88,9 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     font-size: 14px;
     color: #5a5549;
   }
+  @media (max-width: 600px) {
+    .auth-container { margin: 20px auto; padding: 0 12px; }
+  }
 </style>
 
 <script define:vars={{ API_BASE }}>

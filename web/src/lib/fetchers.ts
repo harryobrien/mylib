@@ -19,6 +19,8 @@ export async function fetchUserEditions(): Promise<Edition[]> {
 
 export interface Review {
   user_id: number;
+  username: string;
+  display_name: string | null;
   rating: number;
   review_text: string | null;
   edition_slug?: string;
@@ -59,4 +61,36 @@ export async function updateProgress(
     body: JSON.stringify(data),
   });
   return res.ok;
+}
+
+export interface UserProfile {
+  username: string;
+  display_name: string | null;
+  bio: string | null;
+  created_at: string;
+  reading_stats: {
+    want_to_read: number;
+    reading: number;
+    finished: number;
+    did_not_finish: number;
+  };
+  reviews: Review[];
+}
+
+export async function fetchUserProfile(username: string): Promise<UserProfile | null> {
+  const res = await fetch(`${API_BASE}/users/${username}`);
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+export async function updateProfile(
+  data: { username?: string; display_name?: string; bio?: string },
+): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${API_BASE}/auth/profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return await res.json();
 }

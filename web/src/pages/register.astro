@@ -9,6 +9,11 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
     <h2>Create Account</h2>
     <form id="register-form">
       <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+" />
+        <span class="hint">3-30 characters, letters, numbers, underscores</span>
+      </div>
+      <div class="field">
         <label for="email">Email</label>
         <input type="email" id="email" name="email" required />
       </div>
@@ -97,6 +102,7 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
   document.getElementById('register-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
+    const username = form.elements.namedItem('username').value;
     const email = form.elements.namedItem('email').value;
     const password = form.elements.namedItem('password').value;
     const confirm = form.elements.namedItem('confirm').value;
@@ -112,7 +118,7 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, email, password }),
       });
 
       const data = await res.json();

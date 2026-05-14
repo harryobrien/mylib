@@ -26,6 +26,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/editions/{slug}", get(get_edition).patch(patch_edition))
         .route("/editions/{slug}/reviews", get(get_edition_reviews))
         .route("/works/{slug}/reviews", get(get_work_reviews))
+        .route("/users/{username}", get(get_user_profile))
         .route("/health", get(health))
 }
 
@@ -632,10 +633,12 @@ async fn get_edition_reviews(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let edition_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let reviews = sqlx::query_as::<_, (i32, i16, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let reviews = sqlx::query_as::<_, (i32, String, Option<String>, i16, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
-        SELECT ur.user_id, ur.rating, ur.review_text, ur.created_at, ur.updated_at
+        SELECT ur.user_id, u.username, u.display_name, ur.rating, ur.review_text,
+               ur.created_at, ur.updated_at
         FROM user_reviews ur
+        JOIN users u ON ur.user_id = u.id
         WHERE ur.edition_id = $1
         ORDER BY ur.updated_at DESC
         "#,
@@ -646,9 +649,11 @@ async fn get_edition_reviews(
 
     let reviews: Vec<_> = reviews
         .into_iter()
-        .map(|(user_id, rating, review_text, created_at, updated_at)| {
+        .map(|(user_id, username, display_name, rating, review_text, created_at, updated_at)| {
             serde_json::json!({
                 "user_id": user_id,
+                "username": username,
+                "display_name": display_name,
                 "rating": rating,
                 "review_text": review_text,
                 "created_at": created_at,
@@ -668,11 +673,12 @@ async fn get_work_reviews(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let work_id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
 
-    let reviews = sqlx::query_as::<_, (i32, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+    let reviews = sqlx::query_as::<_, (i32, String, Option<String>, i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
         r#"
-        SELECT ur.user_id, ur.edition_id, ur.rating, ur.review_text, e.title,
-               ur.created_at, ur.updated_at
+        SELECT ur.user_id, u.username, u.display_name, ur.edition_id, ur.rating,
+               ur.review_text, e.title, ur.created_at, ur.updated_at
         FROM user_reviews ur
+        JOIN users u ON ur.user_id = u.id
         JOIN editions e ON ur.edition_id = e.id
         WHERE e.work_id = $1
         ORDER BY ur.updated_at DESC
@@ -684,9 +690,11 @@ async fn get_work_reviews(
 
     let reviews: Vec<_> = reviews
         .into_iter()
-        .map(|(user_id, edition_id, rating, review_text, edition_title, created_at, updated_at)| {
+        .map(|(user_id, username, display_name, edition_id, rating, review_text, edition_title, created_at, updated_at)| {
             serde_json::json!({
                 "user_id": user_id,
+                "username": username,
+                "display_name": display_name,
                 "edition_slug": base36::encode(edition_id as i64),
                 "rating": rating,
                 "review_text": review_text,
@@ -699,6 +707,80 @@ async fn get_work_reviews(
 
     Ok(Json(serde_json::json!({
         "reviews": reviews
+    })))
+}
+
+async fn get_user_profile(
+    State(state): State<Arc<AppState>>,
+    Path(username): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user = sqlx::query_as::<_, (i32, String, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(
+        "SELECT id, username, display_name, bio, created_at FROM users WHERE LOWER(username) = LOWER($1)",
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::NotFound)?;
+
+    let (user_id, username, display_name, bio, created_at) = user;
+
+    let stats = sqlx::query_as::<_, (String, i64)>(
+        r#"
+        SELECT status, COUNT(*) as count
+        FROM user_editions
+        WHERE user_id = $1
+        GROUP BY status
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut reading_stats = serde_json::json!({
+        "want_to_read": 0,
+        "reading": 0,
+        "finished": 0,
+        "did_not_finish": 0,
+    });
+    for (status, count) in &stats {
+        reading_stats[status] = serde_json::json!(count);
+    }
+
+    let reviews = sqlx::query_as::<_, (i32, i16, Option<String>, String, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
+        r#"
+        SELECT ur.edition_id, ur.rating, ur.review_text, e.title,
+               ur.created_at, ur.updated_at
+        FROM user_reviews ur
+        JOIN editions e ON ur.edition_id = e.id
+        WHERE ur.user_id = $1
+        ORDER BY ur.updated_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let reviews: Vec<_> = reviews
+        .into_iter()
+        .map(|(edition_id, rating, review_text, edition_title, created_at, updated_at)| {
+            serde_json::json!({
+                "edition_slug": base36::encode(edition_id as i64),
+                "rating": rating,
+                "review_text": review_text,
+                "edition_title": edition_title,
+                "created_at": created_at,
+                "updated_at": updated_at,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "username": username,
+        "display_name": display_name,
+        "bio": bio,
+        "created_at": created_at,
+        "reading_stats": reading_stats,
+        "reviews": reviews,
     })))
 }
 

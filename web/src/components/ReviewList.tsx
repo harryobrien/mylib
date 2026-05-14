@@ -49,6 +49,11 @@ export default function ReviewList({ editionSlug, workSlug }: Props) {
       {reviews.map((r, i) => (
         <div key={`${r.user_id}-${i}`} className="review-item">
           <div className="review-header">
+            {r.username && (
+              <a href={`/users/${r.username}`} className="review-author">
+                {r.display_name || r.username}
+              </a>
+            )}
             <Stars rating={r.rating} />
             {r.edition_title && (
               <span className="review-edition">{r.edition_title}</span>

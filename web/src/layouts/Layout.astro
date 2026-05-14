@@ -462,6 +462,45 @@ const ogImage = image || `${siteUrl}/android-chrome-512x512.png`;
       line-height: 1.6;
     }
     .reviews-section { margin-bottom: 10px; }
+    .review-author {
+      font-size: 13px;
+      font-weight: 500;
+      color: #3a3530;
+      text-decoration: none;
+    }
+    .review-author:hover { color: #b8860b; }
+
+    /* Profile editor */
+    .profile-editor { max-width: 360px; }
+    .profile-editor-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    .profile-editor-field label {
+      font-size: 13px;
+      color: #5a5549;
+    }
+    .profile-editor-field input,
+    .profile-editor-field textarea {
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px;
+      border: 1px solid #d9d4c8;
+      background: #fffef9;
+    }
+    .profile-editor-field input:focus,
+    .profile-editor-field textarea:focus {
+      border-color: #b8860b;
+      outline: none;
+    }
+    .profile-editor-field textarea { resize: vertical; }
+    .profile-editor-error {
+      font-size: 13px;
+      color: #a65d57;
+      margin-bottom: 8px;
+    }
 
     @media (max-width: 600px) {
       body { padding: 0; }

@@ -35,6 +35,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/auth/editions/{slug}/progress",
             patch(update_progress),
         )
+        .route("/auth/profile", patch(update_profile))
 }
 
 fn generate_token() -> String {
@@ -46,6 +47,7 @@ fn generate_token() -> String {
 pub struct RegisterRequest {
     email: String,
     password: String,
+    username: String,
 }
 
 #[derive(Serialize)]
@@ -62,6 +64,18 @@ pub struct UserInfo {
     id: i32,
     email: String,
     email_verified: bool,
+    username: String,
+    display_name: Option<String>,
+}
+
+fn validate_username(username: &str) -> Result<(), AuthError> {
+    if username.len() < 3 || username.len() > 30 {
+        return Err(AuthError::Validation("Username must be 3-30 characters".into()));
+    }
+    if !username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(AuthError::Validation("Username must be alphanumeric or underscores".into()));
+    }
+    Ok(())
 }
 
 async fn register(
@@ -76,6 +90,8 @@ async fn register(
         return Err(AuthError::WeakPassword);
     }
 
+    validate_username(&req.username)?;
+
     let existing = sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE email = $1")
         .bind(&req.email)
         .fetch_optional(&state.db)
@@ -83,6 +99,18 @@ async fn register(
 
     if existing.is_some() {
         return Err(AuthError::EmailTaken);
+    }
+
+    let username_taken = sqlx::query_scalar::<_, i32>(
+        "SELECT id FROM users WHERE LOWER(username) = LOWER($1)",
+    )
+    .bind(&req.username)
+    .fetch_optional(&state.db)
+    .await?
+    .is_some();
+
+    if username_taken {
+        return Err(AuthError::Validation("Username already taken".into()));
     }
 
     let salt = SaltString::generate(&mut OsRng);
@@ -93,10 +121,11 @@ async fn register(
         .to_string();
 
     let user_id = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
+        "INSERT INTO users (email, password_hash, username) VALUES ($1, $2, $3) RETURNING id",
     )
     .bind(&req.email)
     .bind(&password_hash)
+    .bind(&req.username)
     .fetch_one(&state.db)
     .await?;
 
@@ -147,6 +176,8 @@ async fn register(
                 id: user_id,
                 email: req.email,
                 email_verified: false,
+                username: req.username,
+                display_name: None,
             }),
         }),
     ))
@@ -162,15 +193,15 @@ async fn login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AuthError> {
-    let user = sqlx::query_as::<_, (i32, String, bool)>(
-        "SELECT id, password_hash, email_verified FROM users WHERE email = $1",
+    let user = sqlx::query_as::<_, (i32, String, bool, String, Option<String>)>(
+        "SELECT id, password_hash, email_verified, username, display_name FROM users WHERE email = $1",
     )
     .bind(&req.email)
     .fetch_optional(&state.db)
     .await?
     .ok_or(AuthError::InvalidCredentials)?;
 
-    let (user_id, password_hash, email_verified) = user;
+    let (user_id, password_hash, email_verified, username, display_name) = user;
 
     let parsed_hash = PasswordHash::new(&password_hash).map_err(|_| AuthError::Internal)?;
     Argon2::default()
@@ -208,6 +239,8 @@ async fn login(
                 id: user_id,
                 email: req.email,
                 email_verified,
+                username,
+                display_name,
             }),
         }),
     ))
@@ -244,9 +277,9 @@ async fn logout(
 
 async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<AuthResponse> {
     let user = match extract_session_token(&headers) {
-        Some(token) => sqlx::query_as::<_, (i32, String, bool)>(
+        Some(token) => sqlx::query_as::<_, (i32, String, bool, String, Option<String>)>(
             r#"
-            SELECT u.id, u.email, u.email_verified
+            SELECT u.id, u.email, u.email_verified, u.username, u.display_name
             FROM users u
             JOIN sessions s ON u.id = s.user_id
             WHERE s.token = $1 AND s.expires_at > NOW()
@@ -257,10 +290,12 @@ async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<Auth
         .await
         .ok()
         .flatten()
-        .map(|(id, email, email_verified)| UserInfo {
+        .map(|(id, email, email_verified, username, display_name)| UserInfo {
             id,
             email,
             email_verified,
+            username,
+            display_name,
         }),
         None => None,
     };
@@ -625,6 +660,68 @@ async fn delete_review(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    username: Option<String>,
+    display_name: Option<String>,
+    bio: Option<String>,
+}
+
+async fn update_profile(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<UpdateProfileRequest>,
+) -> Result<Json<serde_json::Value>, AuthError> {
+    let user_id = get_user_id(&state, &headers).await?;
+
+    if let Some(ref username) = req.username {
+        validate_username(username)?;
+
+        let taken = sqlx::query_scalar::<_, i32>(
+            "SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2",
+        )
+        .bind(username)
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .is_some();
+
+        if taken {
+            return Err(AuthError::Validation("Username already taken".into()));
+        }
+    }
+
+    if let Some(ref display_name) = req.display_name {
+        if display_name.len() > 100 {
+            return Err(AuthError::Validation("Display name too long".into()));
+        }
+    }
+
+    if let Some(ref bio) = req.bio {
+        if bio.len() > 5000 {
+            return Err(AuthError::Validation("Bio too long".into()));
+        }
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            username = COALESCE($2, username),
+            display_name = COALESCE($3, display_name),
+            bio = COALESCE($4, bio)
+        WHERE id = $1
+        "#,
+    )
+    .bind(user_id)
+    .bind(&req.username)
+    .bind(&req.display_name)
+    .bind(&req.bio)
+    .execute(&state.db)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
 pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {
     let cookie_header = headers.get("cookie")?.to_str().ok()?;
     for part in cookie_header.split(';') {
@@ -685,6 +782,7 @@ pub enum AuthError {
     InvalidCredentials,
     InvalidToken,
     Unauthorized,
+    Validation(String),
     Internal,
     Database(sqlx::Error),
 }
@@ -708,6 +806,7 @@ impl IntoResponse for AuthError {
                 (StatusCode::UNAUTHORIZED, "Invalid email or password")
             }
             AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid or expired token"),
+            AuthError::Validation(ref msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
             AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, "Not authenticated"),
             AuthError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
             AuthError::Database(e) => {

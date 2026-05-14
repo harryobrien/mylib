@@ -11,7 +11,7 @@ export default defineConfig({
     AstroPWA({
       registerType: 'autoUpdate',
       workbox: {
-        navigateFallback: '/',
+        navigateFallback: null,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/covers\.openlibrary\.org\/.*/i,
@@ -22,7 +22,7 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https?:\/\/.*\/search\?.*/i,
+            urlPattern: /^https?:\/\/.*\/api\/search\?.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'search',
@@ -30,10 +30,10 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https?:\/\/.*\/(works|authors|editions)\/.*/i,
+            urlPattern: /^https?:\/\/.*\/api\/(works|authors|editions)\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'resources',
+              cacheName: 'api-resources',
               expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
             },
           },

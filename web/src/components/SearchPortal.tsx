@@ -1,15 +1,15 @@
-import { useState } from 'react';
-import type { MouseEvent } from 'react';
-import { useStore } from '@nanostores/react';
-import { $searchQuery, setSearch } from '../stores/search';
+import { useState } from "react";
+import type { MouseEvent } from "react";
+import { useStore } from "@nanostores/react";
+import { $searchQuery, setSearch } from "../stores/search";
 
-const STORAGE_KEY = 'mylib_search';
-const HISTORY_KEY = 'mylib_history';
+const STORAGE_KEY = "mylib_search";
+const HISTORY_KEY = "mylib_history";
 
 export default function SearchPortal() {
   const [history, setHistory] = useState<string[]>(() => {
     try {
-      return JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
+      return JSON.parse(sessionStorage.getItem(HISTORY_KEY) || "[]");
     } catch {
       return [];
     }
@@ -18,10 +18,10 @@ export default function SearchPortal() {
 
   function handleClick(e: MouseEvent<HTMLAnchorElement>, query: string): void {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q: query, r: [], s: '' }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ q: query, r: [], s: "" }));
     } catch {}
 
-    if (window.location.pathname === '/') {
+    if (window.location.pathname === "/") {
       e.preventDefault();
       setSearch(query);
     }
@@ -38,14 +38,20 @@ export default function SearchPortal() {
         <a
           key={i}
           href="/"
-          className={`search-portal ${q === currentQuery ? 'current' : ''}`}
+          className={`search-portal ${q === currentQuery ? "current" : ""}`}
           onClick={(e) => handleClick(e, q)}
         >
           {q}
         </a>
       ))}
       {history.length > 0 && (
-        <button type="button" className="search-portal-clear" onClick={clearHistory} title="Clear history" aria-label="Clear search history">
+        <button
+          type="button"
+          className="search-portal-clear"
+          onClick={clearHistory}
+          title="Clear history"
+          aria-label="Clear search history"
+        >
           &times;
         </button>
       )}

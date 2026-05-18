@@ -10,7 +10,9 @@ export function StarsDisplay({ rating }: StarsDisplayProps) {
         return (
           <span key={s} className="star-wrapper">
             <span className="star">★</span>
-            <span className="star filled" style={{ width: `${fill * 100}%` }}>★</span>
+            <span className="star filled" style={{ width: `${fill * 100}%` }}>
+              ★
+            </span>
           </span>
         );
       })}
@@ -35,7 +37,9 @@ export function StarsInput({ value, hoverValue, onHover, onSelect }: StarsInputP
         return (
           <span key={s} className="star-input-wrapper">
             <span className="star">★</span>
-            <span className="star filled" style={{ width: `${fill * 100}%` }}>★</span>
+            <span className="star filled" style={{ width: `${fill * 100}%` }}>
+              ★
+            </span>
             {[0.25, 0.5, 0.75, 1.0].map((q) => (
               <button
                 key={q}
@@ -43,17 +47,24 @@ export function StarsInput({ value, hoverValue, onHover, onSelect }: StarsInputP
                 className="star-quarter-zone"
                 tabIndex={0}
                 aria-label={`Rate ${s - 1 + q} stars`}
-                style={{ left: `${(q - 0.25) * 100}%`, width: '25%' }}
+                style={{ left: `${(q - 0.25) * 100}%`, width: "25%" }}
                 onMouseEnter={() => onHover(s - 1 + q)}
                 onMouseLeave={() => onHover(0)}
                 onClick={() => onSelect(s - 1 + q)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s - 1 + q); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect(s - 1 + q);
+                  }
+                }}
               />
             ))}
           </span>
         );
       })}
-      {display > 0 && <span className="stars-value">{display.toFixed(2).replace(/\.?0+$/, '')}</span>}
+      {display > 0 && (
+        <span className="stars-value">{display.toFixed(2).replace(/\.?0+$/, "")}</span>
+      )}
     </fieldset>
   );
 }

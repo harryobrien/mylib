@@ -1,16 +1,14 @@
-import useSWR from 'swr';
-import { fetchWorkLists } from '../lib/fetchers';
+import useSWR from "swr";
+import { fetchWorkLists } from "../lib/fetchers";
 
 interface Props {
   workSlug: string;
 }
 
 export default function WorkLists({ workSlug }: Props) {
-  const { data: lists } = useSWR(
-    `workLists:${workSlug}`,
-    () => fetchWorkLists(workSlug),
-    { revalidateOnFocus: false }
-  );
+  const { data: lists } = useSWR(`workLists:${workSlug}`, () => fetchWorkLists(workSlug), {
+    revalidateOnFocus: false,
+  });
 
   if (!lists || lists.length === 0) return null;
 
@@ -18,7 +16,7 @@ export default function WorkLists({ workSlug }: Props) {
     <section className="work-lists">
       <h2>In Lists</h2>
       <div className="work-lists-items">
-        {lists.map(l => (
+        {lists.map((l) => (
           <a key={l.id} href={`/lists/${l.id}`} className="work-list-item">
             <span className="work-list-title">{l.title}</span>
             <span className="work-list-by">by {l.display_name || l.username}</span>

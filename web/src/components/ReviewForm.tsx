@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import useSWR, { mutate } from 'swr';
-import { useStore } from '@nanostores/react';
-import { $user } from '../stores/user';
-import { fetchUserReview } from '../lib/fetchers';
-import { StarsDisplay, StarsInput } from './Stars';
+import { useState } from "react";
+import useSWR, { mutate } from "swr";
+import { useStore } from "@nanostores/react";
+import { $user } from "../stores/user";
+import { fetchUserReview } from "../lib/fetchers";
+import { StarsDisplay, StarsInput } from "./Stars";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
 
 interface Props {
   editionSlug: string;
@@ -16,12 +16,12 @@ export default function ReviewForm({ editionSlug }: Props) {
   const { data: existingReview } = useSWR(
     user ? `userReview:${editionSlug}` : null,
     () => fetchUserReview(editionSlug),
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: false },
   );
 
   const [rating, setRating] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
-  const [reviewText, setReviewText] = useState('');
+  const [reviewText, setReviewText] = useState("");
   const [editing, setEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,7 +29,7 @@ export default function ReviewForm({ editionSlug }: Props) {
 
   function startEditing() {
     setRating(existingReview?.rating || 0);
-    setReviewText(existingReview?.review_text || '');
+    setReviewText(existingReview?.review_text || "");
     setEditing(true);
   }
 
@@ -39,9 +39,9 @@ export default function ReviewForm({ editionSlug }: Props) {
     setSubmitting(true);
     try {
       await fetch(`${API_BASE}/auth/editions/${editionSlug}/review`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           rating: finalRating,
           review_text: reviewText || null,
@@ -59,13 +59,13 @@ export default function ReviewForm({ editionSlug }: Props) {
     setSubmitting(true);
     try {
       await fetch(`${API_BASE}/auth/editions/${editionSlug}/review`, {
-        method: 'DELETE',
-        credentials: 'include',
+        method: "DELETE",
+        credentials: "include",
       });
       mutate(`userReview:${editionSlug}`);
       mutate(`editionReviews:${editionSlug}`);
       setRating(0);
-      setReviewText('');
+      setReviewText("");
       setEditing(false);
     } finally {
       setSubmitting(false);
@@ -83,7 +83,9 @@ export default function ReviewForm({ editionSlug }: Props) {
           {existingReview.review_text && (
             <p className="review-text-preview">{existingReview.review_text}</p>
           )}
-          <button type="button" onClick={startEditing} className="review-edit-btn">Edit</button>
+          <button type="button" onClick={startEditing} className="review-edit-btn">
+            Edit
+          </button>
         </div>
       </div>
     );
@@ -98,7 +100,11 @@ export default function ReviewForm({ editionSlug }: Props) {
             value={0}
             hoverValue={hoverRating}
             onHover={setHoverRating}
-            onSelect={(v) => { setRating(v); startEditing(); setRating(v); }}
+            onSelect={(v) => {
+              setRating(v);
+              startEditing();
+              setRating(v);
+            }}
           />
         </div>
       </div>
@@ -108,7 +114,7 @@ export default function ReviewForm({ editionSlug }: Props) {
   return (
     <div className="review-form">
       <div className="review-editing">
-        <span className="review-label">{hasReview ? 'Edit your review' : 'Write a review'}</span>
+        <span className="review-label">{hasReview ? "Edit your review" : "Write a review"}</span>
         <StarsInput
           value={rating}
           hoverValue={hoverRating}
@@ -124,12 +130,25 @@ export default function ReviewForm({ editionSlug }: Props) {
           maxLength={10000}
         />
         <div className="review-actions">
-          <button type="button" onClick={handleSubmit} disabled={submitting || (!rating && !existingReview?.rating)} className="review-submit-btn">
-            {submitting ? 'Saving...' : 'Save'}
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || (!rating && !existingReview?.rating)}
+            className="review-submit-btn"
+          >
+            {submitting ? "Saving..." : "Save"}
           </button>
-          <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
+          <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">
+            Cancel
+          </button>
           {hasReview && (
-            <button type="button" onClick={handleDelete} disabled={submitting} className="review-delete-btn" aria-label="Delete review">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={submitting}
+              className="review-delete-btn"
+              aria-label="Delete review"
+            >
               Delete
             </button>
           )}

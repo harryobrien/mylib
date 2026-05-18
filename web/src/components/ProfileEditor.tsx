@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { useStore } from '@nanostores/react';
-import { $user } from '../stores/user';
-import { updateProfile } from '../lib/fetchers';
-import { mutate } from 'swr';
+import { useState } from "react";
+import { useStore } from "@nanostores/react";
+import { $user } from "../stores/user";
+import { updateProfile } from "../lib/fetchers";
+import { mutate } from "swr";
 
 interface Props {
   username: string;
@@ -11,28 +11,28 @@ interface Props {
 export default function ProfileEditor({ username }: Props) {
   const user = useStore($user);
   const [editing, setEditing] = useState(false);
-  const [formUsername, setFormUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [bio, setBio] = useState('');
-  const [error, setError] = useState('');
+  const [formUsername, setFormUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   if (!user || user.username !== username) return null;
 
   function startEditing() {
     setFormUsername(user!.username);
-    setDisplayName(user!.display_name || '');
-    setBio('');
+    setDisplayName(user!.display_name || "");
+    setBio("");
     setEditing(true);
-    setError('');
+    setError("");
   }
 
   async function handleSave() {
     setSaving(true);
-    setError('');
+    setError("");
     const data: Record<string, string> = {};
     if (formUsername !== user!.username) data.username = formUsername;
-    if (displayName !== (user!.display_name || '')) data.display_name = displayName;
+    if (displayName !== (user!.display_name || "")) data.display_name = displayName;
     if (bio) data.bio = bio;
 
     if (Object.keys(data).length === 0) {
@@ -43,20 +43,24 @@ export default function ProfileEditor({ username }: Props) {
 
     const result = await updateProfile(data);
     if (result.success) {
-      mutate('user');
+      mutate("user");
       if (data.username) {
         window.location.href = `/users/${data.username}`;
       } else {
         setEditing(false);
       }
     } else {
-      setError(result.message || 'Failed to save');
+      setError(result.message || "Failed to save");
     }
     setSaving(false);
   }
 
   if (!editing) {
-    return <button type="button" onClick={startEditing} className="review-edit-btn">Edit Profile</button>;
+    return (
+      <button type="button" onClick={startEditing} className="review-edit-btn">
+        Edit Profile
+      </button>
+    );
   }
 
   return (
@@ -67,7 +71,7 @@ export default function ProfileEditor({ username }: Props) {
           id="profile-username"
           type="text"
           value={formUsername}
-          onChange={e => setFormUsername(e.target.value)}
+          onChange={(e) => setFormUsername(e.target.value)}
           maxLength={30}
         />
       </div>
@@ -77,7 +81,7 @@ export default function ProfileEditor({ username }: Props) {
           id="profile-display-name"
           type="text"
           value={displayName}
-          onChange={e => setDisplayName(e.target.value)}
+          onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Optional"
           maxLength={100}
         />
@@ -87,18 +91,24 @@ export default function ProfileEditor({ username }: Props) {
         <textarea
           id="profile-bio"
           value={bio}
-          onChange={e => setBio(e.target.value)}
+          onChange={(e) => setBio(e.target.value)}
           placeholder="Tell us about yourself..."
           rows={3}
           maxLength={5000}
         />
       </div>
-      {error && <p className="profile-editor-error" role="alert" aria-live="assertive">{error}</p>}
+      {error && (
+        <p className="profile-editor-error" role="alert" aria-live="assertive">
+          {error}
+        </p>
+      )}
       <div className="review-actions">
         <button type="button" onClick={handleSave} disabled={saving} className="review-submit-btn">
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? "Saving..." : "Save"}
         </button>
-        <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">Cancel</button>
+        <button type="button" onClick={() => setEditing(false)} className="review-cancel-btn">
+          Cancel
+        </button>
       </div>
     </div>
   );

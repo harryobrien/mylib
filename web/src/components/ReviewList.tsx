@@ -1,6 +1,6 @@
-import useSWR from 'swr';
-import { fetchEditionReviews, fetchWorkReviews, type Review } from '../lib/fetchers';
-import { StarsDisplay } from './Stars';
+import useSWR from "swr";
+import { fetchEditionReviews, fetchWorkReviews, type Review } from "../lib/fetchers";
+import { StarsDisplay } from "./Stars";
 
 interface Props {
   editionSlug?: string;
@@ -9,9 +9,9 @@ interface Props {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
@@ -46,9 +46,7 @@ export default function ReviewList({ editionSlug, workSlug }: Props) {
               </a>
             )}
             <StarsDisplay rating={r.rating} />
-            {r.edition_title && (
-              <span className="review-edition">{r.edition_title}</span>
-            )}
+            {r.edition_title && <span className="review-edition">{r.edition_title}</span>}
             <span className="review-date">{formatDate(r.updated_at)}</span>
           </div>
           {r.review_text && <p className="review-body">{r.review_text}</p>}

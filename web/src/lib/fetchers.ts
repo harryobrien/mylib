@@ -1,17 +1,17 @@
-import type { User } from '../stores/user';
-import type { Edition } from '../stores/search';
+import type { User } from "../stores/user";
+import type { Edition } from "../stores/search";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
 
 export async function fetchUser(): Promise<User | null> {
-  const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
   if (!res.ok) return null;
   const data = await res.json();
   return data.success && data.user ? data.user : null;
 }
 
 export async function fetchUserEditions(): Promise<Edition[]> {
-  const res = await fetch(`${API_BASE}/auth/editions`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/editions`, { credentials: "include" });
   if (!res.ok) return [];
   const data = await res.json();
   return data.editions || [];
@@ -44,7 +44,7 @@ export async function fetchWorkReviews(slug: string): Promise<Review[]> {
 }
 
 export async function fetchUserReview(slug: string): Promise<Review | null> {
-  const res = await fetch(`${API_BASE}/auth/editions/${slug}/review`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/editions/${slug}/review`, { credentials: "include" });
   if (!res.ok) return null;
   const data = await res.json();
   return data.review || null;
@@ -55,9 +55,9 @@ export async function updateProgress(
   data: { current_page?: number; started_at?: string; finished_at?: string },
 ): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/editions/${slug}/progress`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return res.ok;
@@ -86,20 +86,22 @@ export async function fetchUserProfile(username: string): Promise<UserProfile | 
   return await res.json();
 }
 
-export async function updateProfile(
-  data: { username?: string; display_name?: string; bio?: string },
-): Promise<{ success: boolean; message?: string }> {
+export async function updateProfile(data: {
+  username?: string;
+  display_name?: string;
+  bio?: string;
+}): Promise<{ success: boolean; message?: string }> {
   const res = await fetch(`${API_BASE}/auth/profile`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return await res.json();
 }
 
 export async function fetchFollowState(username: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/auth/following/${username}`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/following/${username}`, { credentials: "include" });
   if (!res.ok) return false;
   const data = await res.json();
   return data.following ?? false;
@@ -107,16 +109,16 @@ export async function fetchFollowState(username: string): Promise<boolean> {
 
 export async function followUser(username: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/following/${username}`, {
-    method: 'PUT',
-    credentials: 'include',
+    method: "PUT",
+    credentials: "include",
   });
   return res.ok;
 }
 
 export async function unfollowUser(username: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/following/${username}`, {
-    method: 'DELETE',
-    credentials: 'include',
+    method: "DELETE",
+    credentials: "include",
   });
   return res.ok;
 }
@@ -134,7 +136,7 @@ export interface FeedItem {
 }
 
 export async function fetchFeed(): Promise<FeedItem[]> {
-  const res = await fetch(`${API_BASE}/auth/feed`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/feed`, { credentials: "include" });
   if (!res.ok) return [];
   const data = await res.json();
   return data.feed || [];
@@ -185,17 +187,20 @@ export async function fetchWorkLists(slug: string): Promise<WorkListItem[]> {
 }
 
 export async function fetchMyLists(): Promise<ListSummary[]> {
-  const res = await fetch(`${API_BASE}/auth/lists`, { credentials: 'include' });
+  const res = await fetch(`${API_BASE}/auth/lists`, { credentials: "include" });
   if (!res.ok) return [];
   const data = await res.json();
   return data.lists || [];
 }
 
-export async function createList(data: { title: string; description?: string }): Promise<{ success: boolean; id?: number }> {
+export async function createList(data: {
+  title: string;
+  description?: string;
+}): Promise<{ success: boolean; id?: number }> {
   const res = await fetch(`${API_BASE}/auth/lists`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(data),
   });
   return await res.json();
@@ -203,24 +208,24 @@ export async function createList(data: { title: string; description?: string }):
 
 export async function deleteList(id: number): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/lists/${id}`, {
-    method: 'DELETE',
-    credentials: 'include',
+    method: "DELETE",
+    credentials: "include",
   });
   return res.ok;
 }
 
 export async function addWorkToList(listId: number, workSlug: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/lists/${listId}/works/${workSlug}`, {
-    method: 'PUT',
-    credentials: 'include',
+    method: "PUT",
+    credentials: "include",
   });
   return res.ok;
 }
 
 export async function removeWorkFromList(listId: number, workSlug: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/lists/${listId}/works/${workSlug}`, {
-    method: 'DELETE',
-    credentials: 'include',
+    method: "DELETE",
+    credentials: "include",
   });
   return res.ok;
 }

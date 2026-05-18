@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import useSWR, { mutate } from 'swr';
-import { useStore } from '@nanostores/react';
-import { $user } from '../stores/user';
-import { fetchFollowState, followUser, unfollowUser } from '../lib/fetchers';
+import { useState } from "react";
+import useSWR, { mutate } from "swr";
+import { useStore } from "@nanostores/react";
+import { $user } from "../stores/user";
+import { fetchFollowState, followUser, unfollowUser } from "../lib/fetchers";
 
 interface Props {
   username: string;
@@ -15,7 +15,7 @@ export default function FollowButton({ username }: Props) {
   const { data: following } = useSWR(
     user && user.username !== username ? `followState:${username}` : null,
     () => fetchFollowState(username),
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: false },
   );
 
   if (!user || user.username === username) return null;
@@ -36,9 +36,9 @@ export default function FollowButton({ username }: Props) {
       type="button"
       onClick={toggle}
       disabled={loading}
-      className={following ? 'follow-btn follow-btn-following' : 'follow-btn'}
+      className={following ? "follow-btn follow-btn-following" : "follow-btn"}
     >
-      {following ? 'Following' : 'Follow'}
+      {following ? "Following" : "Follow"}
     </button>
   );
 }

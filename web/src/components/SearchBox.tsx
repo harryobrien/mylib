@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import type { ChangeEvent } from 'react';
-import { useStore } from '@nanostores/react';
-import { $searchQuery, $triggerSearch, $hasSearchResults } from '../stores/search';
+import { useState, useRef, useEffect } from "react";
+import type { ChangeEvent } from "react";
+import { useStore } from "@nanostores/react";
+import { $searchQuery, $triggerSearch, $hasSearchResults } from "../stores/search";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
-const STORAGE_KEY = 'mylib_search';
-const HISTORY_KEY = 'mylib_history';
+const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
+const STORAGE_KEY = "mylib_search";
+const HISTORY_KEY = "mylib_history";
 
 interface WorkHit {
   id: number;
@@ -66,12 +66,12 @@ interface SavedState {
 }
 
 function esc(str: string | undefined): string {
-  if (!str) return '';
-  return str.replace(/[\uFE20\uFE21]/g, '');
+  if (!str) return "";
+  return str.replace(/[\uFE20\uFE21]/g, "");
 }
 
 function normalizeForMatch(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function groupResults(data: SearchResponse, query: string): GroupedResults {
@@ -91,7 +91,10 @@ function groupResults(data: SearchResponse, query: string): GroupedResults {
     const topAuthor = data.authors[0];
     const nameWords = topAuthor.name.toLowerCase().split(/\s+/);
     const queryWords = q.split(/\s+/);
-    if (queryWords.length >= 2 && queryWords.every(qw => nameWords.some(nw => nw.startsWith(qw)))) {
+    if (
+      queryWords.length >= 2 &&
+      queryWords.every((qw) => nameWords.some((nw) => nw.startsWith(qw)))
+    ) {
       featuredAuthor = topAuthor;
     }
   }
@@ -115,7 +118,7 @@ function groupResults(data: SearchResponse, query: string): GroupedResults {
   }
 
   const otherAuthors = featuredAuthor
-    ? data.authors.filter(a => a.id !== featuredAuthor!.id)
+    ? data.authors.filter((a) => a.id !== featuredAuthor!.id)
     : data.authors;
 
   return {
@@ -139,9 +142,9 @@ export default function SearchBox() {
   const [query, setQuery] = useState<string>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return (JSON.parse(saved) as SavedState).q || '';
+      if (saved) return (JSON.parse(saved) as SavedState).q || "";
     } catch {}
-    return '';
+    return "";
   });
 
   const [grouped, setGrouped] = useState<GroupedResults>(() => {
@@ -155,9 +158,9 @@ export default function SearchBox() {
   const [stats, setStats] = useState<string>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) return (JSON.parse(saved) as SavedState).s || '';
+      if (saved) return (JSON.parse(saved) as SavedState).s || "";
     } catch {}
-    return '';
+    return "";
   });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,16 +177,20 @@ export default function SearchBox() {
         search(storeQuery);
       } else {
         setGrouped(emptyGrouped);
-        setStats('');
-        saveState('', emptyGrouped, '');
+        setStats("");
+        saveState("", emptyGrouped, "");
         $hasSearchResults.set(false);
       }
     }
   }, [trigger]);
 
   useEffect(() => {
-    const hasResults = grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
-      grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0;
+    const hasResults =
+      grouped.featuredAuthor ||
+      grouped.worksByAuthor.length > 0 ||
+      grouped.otherWorks.length > 0 ||
+      grouped.otherAuthors.length > 0 ||
+      grouped.editions.length > 0;
     if (query && !hasResults) {
       search(query);
     }
@@ -199,8 +206,8 @@ export default function SearchBox() {
   function saveToHistory(q: string): void {
     if (!q.trim()) return;
     try {
-      const history: string[] = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || '[]');
-      const filtered = history.filter(h => h !== q);
+      const history: string[] = JSON.parse(sessionStorage.getItem(HISTORY_KEY) || "[]");
+      const filtered = history.filter((h) => h !== q);
       filtered.unshift(q);
       sessionStorage.setItem(HISTORY_KEY, JSON.stringify(filtered.slice(0, 20)));
     } catch {}
@@ -211,8 +218,8 @@ export default function SearchBox() {
       searchVersionRef.current++;
       displayedVersionRef.current = searchVersionRef.current;
       setGrouped(emptyGrouped);
-      setStats('');
-      saveState('', emptyGrouped, '');
+      setStats("");
+      saveState("", emptyGrouped, "");
       $hasSearchResults.set(false);
       return;
     }
@@ -229,8 +236,12 @@ export default function SearchBox() {
 
       const elapsed = (performance.now() - start).toFixed(0);
       const g = groupResults(data, q);
-      const total = (g.featuredAuthor ? 1 : 0) + g.worksByAuthor.length +
-        g.otherWorks.length + g.otherAuthors.length + g.editions.length;
+      const total =
+        (g.featuredAuthor ? 1 : 0) +
+        g.worksByAuthor.length +
+        g.otherWorks.length +
+        g.otherAuthors.length +
+        g.editions.length;
 
       const statsText = `${total} results in ${elapsed}ms`;
       setStats(statsText);
@@ -251,21 +262,25 @@ export default function SearchBox() {
   }
 
   function handleClear(): void {
-    setQuery('');
+    setQuery("");
     setGrouped(emptyGrouped);
-    setStats('');
-    saveState('', emptyGrouped, '');
+    setStats("");
+    saveState("", emptyGrouped, "");
     $hasSearchResults.set(false);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       handleClear();
     }
   }
 
-  const hasResults = grouped.featuredAuthor || grouped.worksByAuthor.length > 0 ||
-    grouped.otherWorks.length > 0 || grouped.otherAuthors.length > 0 || grouped.editions.length > 0;
+  const hasResults =
+    grouped.featuredAuthor ||
+    grouped.worksByAuthor.length > 0 ||
+    grouped.otherWorks.length > 0 ||
+    grouped.otherAuthors.length > 0 ||
+    grouped.editions.length > 0;
 
   function renderWork(w: WorkHit) {
     return (
@@ -346,7 +361,7 @@ export default function SearchBox() {
           <div className="result-meta">
             {e.publishers && <span>{esc(e.publishers)}</span>}
             {e.publish_year && <span> · {e.publish_year}</span>}
-            {e.isbns && <span> · {esc(e.isbns.split(' ')[0])}</span>}
+            {e.isbns && <span> · {esc(e.isbns.split(" ")[0])}</span>}
           </div>
         </div>
       </a>
@@ -366,13 +381,22 @@ export default function SearchBox() {
           aria-label="Search books, authors, ISBNs"
         />
         {query && (
-          <button className="search-clear" onClick={handleClear} type="button" aria-label="Clear search">
+          <button
+            className="search-clear"
+            onClick={handleClear}
+            type="button"
+            aria-label="Clear search"
+          >
             &times;
           </button>
         )}
       </div>
 
-      {(query || hasResults) && <div className="stats" aria-live="polite">{stats}</div>}
+      {(query || hasResults) && (
+        <div className="stats" aria-live="polite">
+          {stats}
+        </div>
+      )}
 
       <div className="results" aria-live="polite">
         {!hasResults && query && <div className="empty">No results</div>}
@@ -392,7 +416,10 @@ export default function SearchBox() {
               )}
               {grouped.worksByAuthor.length > 0 && (
                 <div className="featured-author-works">
-                  {grouped.worksByAuthor.slice(0, 3).map(w => w.title).join(' · ')}
+                  {grouped.worksByAuthor
+                    .slice(0, 3)
+                    .map((w) => w.title)
+                    .join(" · ")}
                 </div>
               )}
             </a>
@@ -401,9 +428,7 @@ export default function SearchBox() {
 
         {grouped.worksByAuthor.length > 0 && (
           <div className="result-group">
-            <div className="result-group-header">
-              Works by {grouped.featuredAuthor?.name}
-            </div>
+            <div className="result-group-header">Works by {grouped.featuredAuthor?.name}</div>
             {grouped.worksByAuthor.slice(0, 5).map(renderWork)}
           </div>
         )}
@@ -411,7 +436,7 @@ export default function SearchBox() {
         {grouped.otherWorks.length > 0 && (
           <div className="result-group">
             <div className="result-group-header">
-              {grouped.featuredAuthor ? 'Other works' : 'Works'}
+              {grouped.featuredAuthor ? "Other works" : "Works"}
             </div>
             {grouped.otherWorks.slice(0, 5).map(renderWork)}
           </div>

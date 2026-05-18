@@ -1,46 +1,46 @@
-import { defineConfig } from 'astro/config';
-import react from '@astrojs/react';
-import node from '@astrojs/node';
-import AstroPWA from '@vite-pwa/astro';
+import { defineConfig } from "astro/config";
+import react from "@astrojs/react";
+import node from "@astrojs/node";
+import AstroPWA from "@vite-pwa/astro";
 
 export default defineConfig({
-  output: 'server',
-  adapter: node({ mode: 'standalone' }),
+  output: "server",
+  adapter: node({ mode: "standalone" }),
   integrations: [
     react(),
     AstroPWA({
-      registerType: 'autoUpdate',
+      registerType: "autoUpdate",
       workbox: {
         navigateFallback: null,
         navigateFallbackDenylist: [/.*/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/covers\.openlibrary\.org\/.*/i,
-            handler: 'CacheFirst',
+            handler: "CacheFirst",
             options: {
-              cacheName: 'covers',
+              cacheName: "covers",
               expiration: { maxEntries: 500, maxAgeSeconds: 30 * 24 * 60 * 60 },
             },
           },
           {
             urlPattern: /^https?:\/\/.*\/api\/search\?.*/i,
-            handler: 'NetworkFirst',
+            handler: "NetworkFirst",
             options: {
-              cacheName: 'search',
+              cacheName: "search",
               expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
             },
           },
           {
             urlPattern: /^https?:\/\/.*\/api\/(works|authors|editions)\/.*/i,
-            handler: 'StaleWhileRevalidate',
+            handler: "StaleWhileRevalidate",
             options: {
-              cacheName: 'api-resources',
+              cacheName: "api-resources",
               expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
             },
           },
           {
             urlPattern: /^https?:\/\/.*\/auth\/.*/i,
-            handler: 'NetworkOnly',
+            handler: "NetworkOnly",
           },
         ],
       },
@@ -50,6 +50,6 @@ export default defineConfig({
   devToolbar: { enabled: false },
   prefetch: {
     prefetchAll: true,
-    defaultStrategy: 'viewport',
+    defaultStrategy: "viewport",
   },
 });

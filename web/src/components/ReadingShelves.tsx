@@ -1,30 +1,26 @@
-import useSWR from 'swr';
-import { useStore } from '@nanostores/react';
-import { $user } from '../stores/user';
-import { $searchQuery, $hasSearchResults, $userEditions, type Edition } from '../stores/search';
-import { fetchUserEditions } from '../lib/fetchers';
+import useSWR from "swr";
+import { useStore } from "@nanostores/react";
+import { $user } from "../stores/user";
+import { $searchQuery, $hasSearchResults, $userEditions, type Edition } from "../stores/search";
+import { fetchUserEditions } from "../lib/fetchers";
 
 export default function ReadingShelves() {
   const user = useStore($user);
   const searchQuery = useStore($searchQuery);
   const hasSearchResults = useStore($hasSearchResults);
 
-  const { data: editions, isLoading } = useSWR(
-    user ? 'userEditions' : null,
-    fetchUserEditions,
-    {
-      onSuccess: (data) => $userEditions.set(data),
-      revalidateOnFocus: false,
-    }
-  );
+  const { data: editions, isLoading } = useSWR(user ? "userEditions" : null, fetchUserEditions, {
+    onSuccess: (data) => $userEditions.set(data),
+    revalidateOnFocus: false,
+  });
 
   if (!user || isLoading || !editions || editions.length === 0 || searchQuery || hasSearchResults) {
     return null;
   }
 
-  const reading = editions.filter(e => e.status === 'reading');
-  const wantToRead = editions.filter(e => e.status === 'want_to_read');
-  const finished = editions.filter(e => e.status === 'finished');
+  const reading = editions.filter((e) => e.status === "reading");
+  const wantToRead = editions.filter((e) => e.status === "want_to_read");
+  const finished = editions.filter((e) => e.status === "finished");
 
   return (
     <div className="shelves">
@@ -40,7 +36,7 @@ function Shelf({ title, editions }: { title: string; editions: Edition[] }) {
     <div className="shelf">
       <div className="shelf-title">{title}</div>
       <div className="shelf-books">
-        {editions.map(e => (
+        {editions.map((e) => (
           <a key={e.slug} href={`/works/${e.work_slug}/${e.slug}`} className="shelf-book">
             {e.cover_id ? (
               <img
@@ -52,8 +48,10 @@ function Shelf({ title, editions }: { title: string; editions: Edition[] }) {
               <div className="shelf-cover-placeholder" />
             )}
             <div className="shelf-book-title">{e.title}</div>
-            {e.status === 'reading' && e.current_page && e.number_of_pages ? (
-              <div className="shelf-book-progress">p.{e.current_page}/{e.number_of_pages}</div>
+            {e.status === "reading" && e.current_page && e.number_of_pages ? (
+              <div className="shelf-book-progress">
+                p.{e.current_page}/{e.number_of_pages}
+              </div>
             ) : null}
           </a>
         ))}

@@ -1,14 +1,14 @@
-import { useState } from 'react';
-import { useStore } from '@nanostores/react';
-import { $editingMode } from '../stores/editing';
+import { useState } from "react";
+import { useStore } from "@nanostores/react";
+import { $editingMode } from "../stores/editing";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
 
 interface Props {
   value: string;
   field: string;
   endpoint: string;
-  as?: 'span' | 'p' | 'div' | 'h2';
+  as?: "span" | "p" | "div" | "h2";
   className?: string;
   multiline?: boolean;
   placeholder?: string;
@@ -19,14 +19,14 @@ export default function EditableField({
   value: initialValue,
   field,
   endpoint,
-  as: Tag = 'span',
+  as: Tag = "span",
   className,
   multiline = false,
-  placeholder = 'Add...',
+  placeholder = "Add...",
   label,
 }: Props) {
   const editing = useStore($editingMode);
-  const [value, setValue] = useState(initialValue || '');
+  const [value, setValue] = useState(initialValue || "");
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -39,20 +39,20 @@ export default function EditableField({
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ [field]: value || null }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.message || 'Failed to save');
-        setValue(initialValue || '');
+        alert(data.message || "Failed to save");
+        setValue(initialValue || "");
       }
     } catch {
-      alert('Network error');
-      setValue(initialValue || '');
+      alert("Network error");
+      setValue(initialValue || "");
     } finally {
       setSaving(false);
       setIsEditing(false);
@@ -60,18 +60,23 @@ export default function EditableField({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !multiline) {
+    if (e.key === "Enter" && !multiline) {
       e.preventDefault();
       handleSave();
     }
-    if (e.key === 'Escape') {
-      setValue(initialValue || '');
+    if (e.key === "Escape") {
+      setValue(initialValue || "");
       setIsEditing(false);
     }
   }
 
   if (!editing) {
-    return value ? <Tag className={className}>{label}{value}</Tag> : null;
+    return value ? (
+      <Tag className={className}>
+        {label}
+        {value}
+      </Tag>
+    ) : null;
   }
 
   if (isEditing) {
@@ -106,7 +111,7 @@ export default function EditableField({
   }
 
   return (
-    <Tag className={`editable-field ${className || ''}`}>
+    <Tag className={`editable-field ${className || ""}`}>
       {label}
       {value || <span className="editable-placeholder">{placeholder}</span>}
       <button

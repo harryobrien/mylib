@@ -1,15 +1,15 @@
-import useSWR from 'swr';
-import { useStore } from '@nanostores/react';
-import { $user } from '../stores/user';
-import { $searchQuery, $hasSearchResults } from '../stores/search';
-import { fetchFeed, type FeedItem } from '../lib/fetchers';
-import { StarsDisplay } from './Stars';
+import useSWR from "swr";
+import { useStore } from "@nanostores/react";
+import { $user } from "../stores/user";
+import { $searchQuery, $hasSearchResults } from "../stores/search";
+import { fetchFeed, type FeedItem } from "../lib/fetchers";
+import { StarsDisplay } from "./Stars";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
@@ -18,11 +18,7 @@ export default function FollowingFeed() {
   const searchQuery = useStore($searchQuery);
   const hasSearchResults = useStore($hasSearchResults);
 
-  const { data: feed } = useSWR(
-    user ? 'feed' : null,
-    fetchFeed,
-    { revalidateOnFocus: false }
-  );
+  const { data: feed } = useSWR(user ? "feed" : null, fetchFeed, { revalidateOnFocus: false });
 
   if (!user || !feed || feed.length === 0 || searchQuery || hasSearchResults) {
     return null;
@@ -66,7 +62,7 @@ export default function FollowingFeed() {
               {item.review_text && (
                 <p className="feed-text">
                   {item.review_text.length > 200
-                    ? item.review_text.slice(0, 200) + '...'
+                    ? item.review_text.slice(0, 200) + "..."
                     : item.review_text}
                 </p>
               )}

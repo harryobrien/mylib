@@ -1,0 +1,14 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+	"formatter": {
+		"indentStyle": "space",
+		"indentWidth": 2
+	},
+	"linter": {
+		"rules": {
+			"a11y": {
+				"noAutofocus": "off"
+			}
+		}
+	}
+}

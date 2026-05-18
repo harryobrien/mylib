@@ -88,6 +88,7 @@ pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyho
     Ok(())
 }
 
+#[allow(unused)]
 pub async fn rebuild_all_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
     tracing::info!("Rebuilding all indexes...");
 
@@ -127,7 +128,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
             doc.add_text(search.works.fields.title, &w.title);
             doc.add_text(
                 search.works.fields.title_ngram,
-                &generate_edge_ngrams(&w.title, 2, 8),
+                generate_edge_ngrams(&w.title, 2, 8),
             );
             if let Some(ref s) = w.subtitle {
                 doc.add_text(search.works.fields.subtitle, s);
@@ -143,7 +144,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
                 doc.add_text(search.works.fields.author_names, &normalized);
                 doc.add_text(
                     search.works.fields.author_names_ngram,
-                    &generate_edge_ngrams(&normalized, 2, 8),
+                    generate_edge_ngrams(&normalized, 2, 8),
                 );
             }
             if let Some(y) = year {
@@ -194,7 +195,7 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
             doc.add_text(search.authors.fields.name, &normalized_name);
             doc.add_text(
                 search.authors.fields.name_ngram,
-                &generate_edge_ngrams(&normalized_name, 2, 8),
+                generate_edge_ngrams(&normalized_name, 2, 8),
             );
             if let Some(ref alt) = a.alternate_names {
                 doc.add_text(search.authors.fields.alternate_names, alt);
@@ -240,7 +241,7 @@ async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> a
             doc.add_text(search.editions.fields.title, &e.title);
             doc.add_text(
                 search.editions.fields.title_ngram,
-                &generate_edge_ngrams(&e.title, 2, 8),
+                generate_edge_ngrams(&e.title, 2, 8),
             );
             if let Some(ref s) = e.subtitle {
                 doc.add_text(search.editions.fields.subtitle, s);
@@ -306,7 +307,7 @@ pub async fn reindex_work(pool: &PgPool, search: &SearchIndex, id: i32) -> anyho
     doc.add_text(search.works.fields.title, &w.title);
     doc.add_text(
         search.works.fields.title_ngram,
-        &generate_edge_ngrams(&w.title, 2, 8),
+        generate_edge_ngrams(&w.title, 2, 8),
     );
     if let Some(ref s) = w.subtitle {
         doc.add_text(search.works.fields.subtitle, s);
@@ -322,7 +323,7 @@ pub async fn reindex_work(pool: &PgPool, search: &SearchIndex, id: i32) -> anyho
         doc.add_text(search.works.fields.author_names, &normalized);
         doc.add_text(
             search.works.fields.author_names_ngram,
-            &generate_edge_ngrams(&normalized, 2, 8),
+            generate_edge_ngrams(&normalized, 2, 8),
         );
     }
     if let Some(y) = year {
@@ -364,7 +365,7 @@ pub async fn reindex_author(pool: &PgPool, search: &SearchIndex, id: i32) -> any
     doc.add_text(search.authors.fields.name, &normalized_name);
     doc.add_text(
         search.authors.fields.name_ngram,
-        &generate_edge_ngrams(&normalized_name, 2, 8),
+        generate_edge_ngrams(&normalized_name, 2, 8),
     );
     if let Some(ref alt) = a.alternate_names {
         doc.add_text(search.authors.fields.alternate_names, alt);
@@ -401,7 +402,7 @@ pub async fn reindex_edition(pool: &PgPool, search: &SearchIndex, id: i32) -> an
     doc.add_text(search.editions.fields.title, &e.title);
     doc.add_text(
         search.editions.fields.title_ngram,
-        &generate_edge_ngrams(&e.title, 2, 8),
+        generate_edge_ngrams(&e.title, 2, 8),
     );
     if let Some(ref s) = e.subtitle {
         doc.add_text(search.editions.fields.subtitle, s);

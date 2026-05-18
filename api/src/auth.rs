@@ -43,6 +43,7 @@ struct VerificationRow {
 
 #[derive(sqlx::FromRow)]
 struct EditionLookupRow {
+    #[allow(unused)]
     id: i32,
     number_of_pages: Option<i32>,
 }
@@ -559,14 +560,6 @@ pub struct SetEditionStatusRequest {
     started_at: Option<chrono::NaiveDate>,
     finished_at: Option<chrono::NaiveDate>,
     current_page: Option<i32>,
-}
-
-#[derive(Serialize)]
-pub struct EditionStatusResponse {
-    slug: String,
-    edition_id: i32,
-    title: String,
-    status: String,
 }
 
 async fn set_edition_status(

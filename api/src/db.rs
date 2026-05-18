@@ -44,6 +44,7 @@ pub async fn get_work_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Work>
     .await
 }
 
+#[allow(dead_code)]
 pub async fn get_work_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Work>> {
     sqlx::query_as(
         "SELECT id, key, title, subtitle, first_publish_date, description FROM works WHERE key = $1"
@@ -62,6 +63,7 @@ pub async fn get_author_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Aut
     .await
 }
 
+#[allow(dead_code)]
 pub async fn get_author_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Author>> {
     sqlx::query_as(
         "SELECT id, key, name, fuller_name, bio, birth_date, death_date FROM authors WHERE key = $1"
@@ -92,6 +94,7 @@ pub async fn get_edition_by_id(pool: &PgPool, id: i32) -> sqlx::Result<Option<Ed
     .await
 }
 
+#[allow(unused)]
 pub async fn get_edition_by_key(pool: &PgPool, key: &str) -> sqlx::Result<Option<Edition>> {
     sqlx::query_as(
         r#"

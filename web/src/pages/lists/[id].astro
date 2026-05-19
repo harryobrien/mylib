@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import ListEditor from '../../components/ListEditor.tsx';
 
 const API_BASE = import.meta.env.API_URL || 'http://localhost:3000';
 const { id } = Astro.params;
@@ -23,6 +24,13 @@ function esc(str) {
       by <a href={`/users/${list.username}`}>{esc(list.display_name) || list.username}</a>
       · {list.works.length} {list.works.length === 1 ? 'book' : 'books'}
     </p>
+    <ListEditor
+      listId={list.id}
+      ownerUsername={list.username}
+      initialTitle={list.title}
+      initialDescription={list.description || ''}
+      client:only="react"
+    />
   </div>
 
   {list.description && (

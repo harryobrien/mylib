@@ -66,7 +66,7 @@ function esc(str) {
     </div>
   </section>
 
-  <UserLists username={profile.username} client:only="react" />
+  <UserLists username={profile.username} initialLists={profile.lists} client:only="react" />
 
   {profile.reviews.length > 0 && (
     <section class="profile-reviews">

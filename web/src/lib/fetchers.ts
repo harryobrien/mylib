@@ -223,6 +223,18 @@ export async function createList(data: {
   return await res.json();
 }
 
+export async function updateList(
+  id: number,
+  data: { title: string; description?: string },
+): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/auth/lists/${id}`, {
+    method: "PATCH",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(data),
+  });
+  return res.ok;
+}
+
 export async function deleteList(id: number): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/lists/${id}`, {
     method: "DELETE",

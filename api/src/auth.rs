@@ -148,7 +148,6 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
-        .route("/auth/logout", post(logout))
         .route("/auth/verify-email", get(verify_email))
         .route("/auth/editions", get(list_user_editions))
         .route("/auth/editions/{slug}", put(set_edition_status))
@@ -453,13 +452,6 @@ async fn login(
     }))
 }
 
-async fn logout() -> Json<AuthResponse> {
-    Json(AuthResponse {
-        success: true,
-        message: Some("Logged out".into()),
-        token: None,
-    })
-}
 
 
 #[derive(Deserialize)]

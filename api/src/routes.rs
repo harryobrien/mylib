@@ -95,18 +95,6 @@ struct ListDetailResponse {
     works: Vec<ListWorkItem>,
 }
 
-#[derive(Serialize)]
-struct ListSummaryItem {
-    id: i32,
-    title: String,
-    description: Option<String>,
-    work_count: i64,
-}
-
-#[derive(Serialize)]
-struct ListsResponse {
-    lists: Vec<ListSummaryItem>,
-}
 
 #[derive(Serialize)]
 struct WorkListItem {
@@ -161,15 +149,12 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/search/editions", get(search_editions))
         // Resource endpoints (slug = base36 encoded ID)
         .route("/works/{slug}", get(get_work).patch(patch_work))
-        .route("/works/{slug}/authors", get(get_work_authors))
-        .route("/works/{slug}/editions", get(get_work_editions))
         .route("/authors/{slug}", get(get_author).patch(patch_author))
         .route("/authors/{slug}/works", get(get_author_works))
         .route("/editions/{slug}", get(get_edition).patch(patch_edition))
         .route("/editions/{slug}/reviews", get(get_edition_reviews))
         .route("/works/{slug}/reviews", get(get_work_reviews))
         .route("/users/{username}", get(get_user_profile))
-        .route("/users/{username}/lists", get(get_user_lists))
         .route("/lists/{id}", get(get_list))
         .route("/works/{slug}/lists", get(get_work_lists))
         .route("/discover/popular", get(get_popular_works))
@@ -366,25 +351,6 @@ async fn get_work(
     }))
 }
 
-async fn get_work_authors(
-    State(state): State<Arc<AppState>>,
-    Path(slug): Path<String>,
-) -> Result<Json<Vec<db::Author>>, AppError> {
-    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
-
-    let authors = db::get_work_authors(&state.db, id).await?;
-    Ok(Json(authors))
-}
-
-async fn get_work_editions(
-    State(state): State<Arc<AppState>>,
-    Path(slug): Path<String>,
-) -> Result<Json<Vec<db::Edition>>, AppError> {
-    let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
-
-    let editions = db::get_work_editions(&state.db, id).await?;
-    Ok(Json(editions))
-}
 
 async fn get_author(
     State(state): State<Arc<AppState>>,
@@ -563,13 +529,7 @@ struct ListWorkRow {
     position: i32,
 }
 
-#[derive(sqlx::FromRow)]
-struct UserListRow {
-    id: i32,
-    title: String,
-    description: Option<String>,
-    work_count: i64,
-}
+
 
 #[derive(sqlx::FromRow)]
 #[allow(dead_code)]
@@ -1209,42 +1169,6 @@ async fn get_list(
     }))
 }
 
-async fn get_user_lists(
-    State(state): State<Arc<AppState>>,
-    Path(username): Path<String>,
-) -> Result<Json<ListsResponse>, AppError> {
-    let user_id =
-        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER(?)")
-            .bind(&username)
-            .fetch_optional(&state.db)
-            .await?
-            .ok_or(AppError::NotFound)?;
-
-    let lists = sqlx::query_as::<_, UserListRow>(
-        r#"
-        SELECT ul.id, ul.title, ul.description,
-               (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
-        FROM user_lists ul
-        WHERE ul.user_id = ?
-        ORDER BY ul.updated_at DESC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let lists = lists
-        .into_iter()
-        .map(|row| ListSummaryItem {
-            id: row.id,
-            title: row.title,
-            description: row.description,
-            work_count: row.work_count,
-        })
-        .collect();
-
-    Ok(Json(ListsResponse { lists }))
-}
 
 async fn get_work_lists(
     State(state): State<Arc<AppState>>,

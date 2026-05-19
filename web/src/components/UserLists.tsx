@@ -5,27 +5,28 @@ import { fetchMyLists, createList, deleteList } from "../lib/fetchers";
 import { mutate } from "swr";
 import { useState } from "react";
 
-interface Props {
-  username: string;
+interface ListItem {
+  id: number;
+  title: string;
+  work_count: number;
 }
 
-export default function UserLists({ username }: Props) {
+interface Props {
+  username: string;
+  initialLists: ListItem[];
+}
+
+export default function UserLists({ username, initialLists }: Props) {
   const user = useStore($user);
   const isOwner = user?.username === username;
 
   const { data: lists } = useSWR(
-    isOwner ? "myLists" : `userLists:${username}`,
-    isOwner
-      ? fetchMyLists
-      : async () => {
-          const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
-          const res = await fetch(`${API_BASE}/users/${username}/lists`);
-          if (!res.ok) return [];
-          const data = await res.json();
-          return data.lists || [];
-        },
+    isOwner ? "myLists" : null,
+    fetchMyLists,
     { revalidateOnFocus: false },
   );
+
+  const displayLists = isOwner ? (lists ?? initialLists) : initialLists;
 
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -43,14 +44,14 @@ export default function UserLists({ username }: Props) {
     mutate("myLists");
   }
 
-  if (!lists || (lists.length === 0 && !isOwner)) return null;
+  if (!displayLists || (displayLists.length === 0 && !isOwner)) return null;
 
   return (
     <section className="profile-lists">
-      <h2>Lists ({lists.length})</h2>
-      {lists.length > 0 && (
+      <h2>Lists ({displayLists.length})</h2>
+      {displayLists.length > 0 && (
         <div className="profile-lists-grid">
-          {lists.map((l: any) => (
+          {displayLists.map((l: any) => (
             <div key={l.id} className="profile-list-item">
               <a href={`/lists/${l.id}`} className="profile-list-link">
                 <span className="profile-list-title">{l.title}</span>

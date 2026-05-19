@@ -1,6 +1,6 @@
 import useSWR, { mutate } from "swr";
 import { useStore } from "@nanostores/react";
-import { $user } from "../stores/user";
+import { $user, getToken } from "../stores/user";
 import { $userEditions } from "../stores/search";
 import { fetchUserEditions } from "../lib/fetchers";
 
@@ -26,7 +26,7 @@ export default function ReadingStatus({ slug }: Props) {
     if (!newStatus) {
       await fetch(`${API_BASE}/auth/editions/${slug}`, {
         method: "DELETE",
-        credentials: "include",
+        ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
       });
     } else {
       const today = new Date().toISOString().slice(0, 10);
@@ -35,8 +35,7 @@ export default function ReadingStatus({ slug }: Props) {
       if (newStatus === "finished") body.finished_at = today;
       await fetch(`${API_BASE}/auth/editions/${slug}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify(body),
       });
     }

@@ -6,30 +6,72 @@ use argon2::{
 };
 use axum::{
     extract::{Path, Query, State},
-    http::{header::SET_COOKIE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use chrono::{Duration, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{base36, AppState};
 
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: i32,
+    email: String,
+    username: String,
+    display_name: Option<String>,
+    email_verified: bool,
+    exp: i64,
+}
+
+fn jwt_secret() -> Vec<u8> {
+    std::env::var("JWT_SECRET")
+        .unwrap_or_else(|_| "dev-secret-change-in-production".into())
+        .into_bytes()
+}
+
+fn create_jwt(
+    user_id: i32,
+    email: &str,
+    username: &str,
+    display_name: Option<&str>,
+    email_verified: bool,
+) -> Result<String, AuthError> {
+    let exp = (Utc::now() + Duration::days(30)).timestamp();
+    let claims = Claims {
+        sub: user_id,
+        email: email.to_string(),
+        username: username.to_string(),
+        display_name: display_name.map(|s| s.to_string()),
+        email_verified,
+        exp,
+    };
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(&jwt_secret()),
+    )
+    .map_err(|_| AuthError::Internal)
+}
+
+fn decode_jwt(token: &str) -> Result<Claims, AuthError> {
+    decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(&jwt_secret()),
+        &Validation::default(),
+    )
+    .map(|data| data.claims)
+    .map_err(|_| AuthError::Unauthorized)
+}
+
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: i32,
     password_hash: String,
-    email_verified: bool,
-    username: String,
-    display_name: Option<String>,
-}
-
-#[derive(sqlx::FromRow)]
-struct UserSessionRow {
-    id: i32,
-    email: String,
     email_verified: bool,
     username: String,
     display_name: Option<String>,
@@ -107,7 +149,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
-        .route("/auth/me", get(me))
         .route("/auth/verify-email", get(verify_email))
         .route("/auth/editions", get(list_user_editions))
         .route("/auth/editions/{slug}", put(set_edition_status))
@@ -152,21 +193,47 @@ pub struct AuthResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    user: Option<UserInfo>,
-}
-
-#[derive(Serialize)]
-pub struct UserInfo {
-    id: i32,
-    email: String,
-    email_verified: bool,
-    username: String,
-    display_name: Option<String>,
+    token: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct SuccessResponse {
     success: bool,
+}
+
+#[derive(Serialize)]
+pub struct TokenResponse {
+    success: bool,
+    token: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateListResponse {
+    success: bool,
+    id: i32,
+}
+
+#[derive(Serialize)]
+pub struct ListSummaryItem {
+    id: i32,
+    title: String,
+    description: Option<String>,
+    work_count: i64,
+    work_slugs: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct MyListsResponse {
+    lists: Vec<ListSummaryItem>,
+}
+
+#[derive(Serialize)]
+struct ResendEmail {
+    from: String,
+    to: Vec<String>,
+    subject: String,
+    html: String,
+    text: String,
 }
 
 #[derive(Serialize)]
@@ -280,7 +347,7 @@ async fn register(
 
     validate_username(&req.username)?;
 
-    let existing = sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE email = $1")
+    let existing = sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE email = ?")
         .bind(&req.email)
         .fetch_optional(&state.db)
         .await?;
@@ -290,7 +357,7 @@ async fn register(
     }
 
     let username_taken =
-        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER(?)")
             .bind(&req.username)
             .fetch_optional(&state.db)
             .await?
@@ -307,19 +374,20 @@ async fn register(
         .map_err(|_| AuthError::Internal)?
         .to_string();
 
-    let user_id = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO users (email, password_hash, username) VALUES ($1, $2, $3) RETURNING id",
+    let result = sqlx::query(
+        "INSERT INTO users (email, password_hash, username) VALUES (?, ?, ?)",
     )
     .bind(&req.email)
     .bind(&password_hash)
     .bind(&req.username)
-    .fetch_one(&state.db)
+    .execute(&state.db)
     .await?;
+    let user_id = result.last_insert_id() as i32;
 
     let token = generate_token();
     let expires_at = Utc::now() + Duration::hours(24);
 
-    sqlx::query("INSERT INTO email_verifications (user_id, token, expires_at) VALUES ($1, $2, $3)")
+    sqlx::query("INSERT INTO email_verifications (user_id, token, expires_at) VALUES (?, ?, ?)")
         .bind(user_id)
         .bind(&token)
         .bind(expires_at)
@@ -330,44 +398,15 @@ async fn register(
         tracing::error!("Failed to send verification email: {e}");
     }
 
-    let session_token = generate_token();
-    let session_expires = Utc::now() + Duration::days(30);
+    let jwt = create_jwt(user_id, &req.email, &req.username, None, false)?;
 
-    sqlx::query("INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)")
-        .bind(user_id)
-        .bind(&session_token)
-        .bind(session_expires)
-        .execute(&state.db)
-        .await?;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        format!(
-            "session={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-            session_token,
-            30 * 24 * 60 * 60
-        )
-        .parse()
-        .unwrap(),
-    );
-
-    Ok((
-        headers,
-        Json(AuthResponse {
-            success: true,
-            message: Some(
-                "Registration successful. Please check your email to verify your account.".into(),
-            ),
-            user: Some(UserInfo {
-                id: user_id,
-                email: req.email,
-                email_verified: false,
-                username: req.username,
-                display_name: None,
-            }),
-        }),
-    ))
+    Ok(Json(AuthResponse {
+        success: true,
+        message: Some(
+            "Registration successful. Please check your email to verify your account.".into(),
+        ),
+        token: Some(jwt),
+    }))
 }
 
 #[derive(Deserialize)]
@@ -381,7 +420,7 @@ async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AuthError> {
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT id, password_hash, email_verified, username, display_name FROM users WHERE email = $1",
+        "SELECT id, password_hash, email_verified, username, display_name FROM users WHERE email = ?",
     )
     .bind(&req.email)
     .fetch_optional(&state.db)
@@ -399,104 +438,29 @@ async fn login(
         .verify_password(req.password.as_bytes(), &parsed_hash)
         .map_err(|_| AuthError::InvalidCredentials)?;
 
-    let session_token = generate_token();
-    let session_expires = Utc::now() + Duration::days(30);
+    let jwt = create_jwt(
+        user_id,
+        &req.email,
+        &username,
+        display_name.as_deref(),
+        email_verified,
+    )?;
 
-    sqlx::query("INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)")
-        .bind(user_id)
-        .bind(&session_token)
-        .bind(session_expires)
-        .execute(&state.db)
-        .await?;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        SET_COOKIE,
-        format!(
-            "session={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
-            session_token,
-            30 * 24 * 60 * 60
-        )
-        .parse()
-        .unwrap(),
-    );
-
-    Ok((
-        headers,
-        Json(AuthResponse {
-            success: true,
-            message: None,
-            user: Some(UserInfo {
-                id: user_id,
-                email: req.email,
-                email_verified,
-                username,
-                display_name,
-            }),
-        }),
-    ))
-}
-
-async fn logout(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, AuthError> {
-    if let Some(session_token) = extract_session_token(&headers) {
-        sqlx::query("DELETE FROM sessions WHERE token = $1")
-            .bind(&session_token)
-            .execute(&state.db)
-            .await?;
-    }
-
-    let mut response_headers = HeaderMap::new();
-    response_headers.insert(
-        SET_COOKIE,
-        "session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
-            .parse()
-            .unwrap(),
-    );
-
-    Ok((
-        response_headers,
-        Json(AuthResponse {
-            success: true,
-            message: Some("Logged out".into()),
-            user: None,
-        }),
-    ))
-}
-
-async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Json<AuthResponse> {
-    let user = match extract_session_token(&headers) {
-        Some(token) => sqlx::query_as::<_, UserSessionRow>(
-            r#"
-            SELECT u.id, u.email, u.email_verified, u.username, u.display_name
-            FROM users u
-            JOIN sessions s ON u.id = s.user_id
-            WHERE s.token = $1 AND s.expires_at > NOW()
-            "#,
-        )
-        .bind(&token)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .map(|row| UserInfo {
-            id: row.id,
-            email: row.email,
-            email_verified: row.email_verified,
-            username: row.username,
-            display_name: row.display_name,
-        }),
-        None => None,
-    };
-
-    Json(AuthResponse {
+    Ok(Json(AuthResponse {
         success: true,
         message: None,
-        user,
+        token: Some(jwt),
+    }))
+}
+
+async fn logout() -> Json<AuthResponse> {
+    Json(AuthResponse {
+        success: true,
+        message: Some("Logged out".into()),
+        token: None,
     })
 }
+
 
 #[derive(Deserialize)]
 pub struct VerifyEmailQuery {
@@ -508,7 +472,7 @@ async fn verify_email(
     Query(query): Query<VerifyEmailQuery>,
 ) -> Result<impl IntoResponse, AuthError> {
     let verification = sqlx::query_as::<_, VerificationRow>(
-        "SELECT id, user_id FROM email_verifications WHERE token = $1 AND expires_at > NOW()",
+        "SELECT id, user_id FROM email_verifications WHERE token = ? AND expires_at > NOW()",
     )
     .bind(&query.token)
     .fetch_optional(&state.db)
@@ -519,13 +483,13 @@ async fn verify_email(
     let user_id = verification.user_id;
 
     // Mark email as verified
-    sqlx::query("UPDATE users SET email_verified = TRUE WHERE id = $1")
+    sqlx::query("UPDATE users SET email_verified = TRUE WHERE id = ?")
         .bind(user_id)
         .execute(&state.db)
         .await?;
 
     // Delete the verification token
-    sqlx::query("DELETE FROM email_verifications WHERE id = $1")
+    sqlx::query("DELETE FROM email_verifications WHERE id = ?")
         .bind(verification_id)
         .execute(&state.db)
         .await?;
@@ -539,19 +503,10 @@ async fn verify_email(
     ))
 }
 
-// Helper to get user_id from session
-async fn get_user_id(state: &AppState, headers: &HeaderMap) -> Result<i32, AuthError> {
-    let session_token = extract_session_token(headers).ok_or(AuthError::Unauthorized)?;
-
-    let user_id = sqlx::query_scalar::<_, i32>(
-        "SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW()",
-    )
-    .bind(&session_token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(AuthError::Unauthorized)?;
-
-    Ok(user_id)
+fn get_user_id(headers: &HeaderMap) -> Result<i32, AuthError> {
+    let token = extract_bearer_token(headers).ok_or(AuthError::Unauthorized)?;
+    let claims = decode_jwt(&token)?;
+    Ok(claims.sub)
 }
 
 #[derive(Deserialize)]
@@ -568,7 +523,7 @@ async fn set_edition_status(
     Path(slug): Path<String>,
     Json(req): Json<SetEditionStatusRequest>,
 ) -> Result<Json<StatusChangeResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     if !["reading", "want_to_read", "finished", "did_not_finish"].contains(&req.status.as_str()) {
@@ -576,7 +531,7 @@ async fn set_edition_status(
     }
 
     let edition = sqlx::query_as::<_, EditionLookupRow>(
-        "SELECT id, number_of_pages FROM editions WHERE id = $1",
+        "SELECT id, number_of_pages FROM editions WHERE id = ?",
     )
     .bind(edition_id)
     .fetch_optional(&state.db)
@@ -604,12 +559,12 @@ async fn set_edition_status(
     sqlx::query(
         r#"
         INSERT INTO user_editions (user_id, edition_id, status, started_at, finished_at, current_page)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (user_id, edition_id) DO UPDATE SET
-            status = $3,
-            started_at = COALESCE($4, user_editions.started_at),
-            finished_at = $5,
-            current_page = COALESCE($6, user_editions.current_page),
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            status = VALUES(status),
+            started_at = COALESCE(VALUES(started_at), started_at),
+            finished_at = VALUES(finished_at),
+            current_page = COALESCE(VALUES(current_page), current_page),
             created_at = NOW()
         "#,
     )
@@ -633,10 +588,10 @@ async fn remove_edition(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    sqlx::query("DELETE FROM user_editions WHERE user_id = $1 AND edition_id = $2")
+    sqlx::query("DELETE FROM user_editions WHERE user_id = ? AND edition_id = ?")
         .bind(user_id)
         .bind(edition_id)
         .execute(&state.db)
@@ -649,7 +604,7 @@ async fn list_user_editions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<UserEditionsResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
 
     let rows = sqlx::query_as::<_, UserEditionRow>(
         r#"
@@ -658,7 +613,7 @@ async fn list_user_editions(
         FROM user_editions ue
         JOIN editions e ON ue.edition_id = e.id
         LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
-        WHERE ue.user_id = $1
+        WHERE ue.user_id = ?
         ORDER BY ue.created_at DESC
         "#,
     )
@@ -701,7 +656,7 @@ async fn update_progress(
     Path(slug): Path<String>,
     Json(req): Json<UpdateProgressRequest>,
 ) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     if let Some(page) = req.current_page {
@@ -713,17 +668,17 @@ async fn update_progress(
     let rows = sqlx::query(
         r#"
         UPDATE user_editions SET
-            started_at = COALESCE($3, started_at),
-            finished_at = COALESCE($4, finished_at),
-            current_page = COALESCE($5, current_page)
-        WHERE user_id = $1 AND edition_id = $2
+            started_at = COALESCE(?, started_at),
+            finished_at = COALESCE(?, finished_at),
+            current_page = COALESCE(?, current_page)
+        WHERE user_id = ? AND edition_id = ?
         "#,
     )
-    .bind(user_id)
-    .bind(edition_id)
     .bind(req.started_at)
     .bind(req.finished_at)
     .bind(req.current_page)
+    .bind(user_id)
+    .bind(edition_id)
     .execute(&state.db)
     .await?;
 
@@ -747,11 +702,11 @@ async fn get_user_review(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Json<UserReviewResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     let review = sqlx::query_as::<_, ReviewRow>(
-        "SELECT rating, review_text, created_at, updated_at FROM user_reviews WHERE user_id = $1 AND edition_id = $2",
+        "SELECT rating, review_text, created_at, updated_at FROM user_reviews WHERE user_id = ? AND edition_id = ?",
     )
     .bind(user_id)
     .bind(edition_id)
@@ -777,7 +732,7 @@ async fn upsert_review(
     Path(slug): Path<String>,
     Json(req): Json<UpsertReviewRequest>,
 ) -> Result<Json<RatingChangeResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     if req.rating < 1.0 || req.rating > 5.0 || (req.rating * 4.0).fract().abs() > f32::EPSILON {
@@ -790,7 +745,7 @@ async fn upsert_review(
         }
     }
 
-    let exists = sqlx::query_scalar::<_, i32>("SELECT id FROM editions WHERE id = $1")
+    let exists = sqlx::query_scalar::<_, i32>("SELECT id FROM editions WHERE id = ?")
         .bind(edition_id)
         .fetch_optional(&state.db)
         .await?
@@ -803,9 +758,9 @@ async fn upsert_review(
     sqlx::query(
         r#"
         INSERT INTO user_reviews (user_id, edition_id, rating, review_text)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (user_id, edition_id) DO UPDATE SET
-            rating = $3, review_text = $4, updated_at = NOW()
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            rating = VALUES(rating), review_text = VALUES(review_text), updated_at = NOW()
         "#,
     )
     .bind(user_id)
@@ -826,10 +781,10 @@ async fn delete_review(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let edition_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
-    sqlx::query("DELETE FROM user_reviews WHERE user_id = $1 AND edition_id = $2")
+    sqlx::query("DELETE FROM user_reviews WHERE user_id = ? AND edition_id = ?")
         .bind(user_id)
         .bind(edition_id)
         .execute(&state.db)
@@ -849,14 +804,14 @@ async fn update_profile(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
-) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<TokenResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
 
     if let Some(ref username) = req.username {
         validate_username(username)?;
 
         let taken = sqlx::query_scalar::<_, i32>(
-            "SELECT id FROM users WHERE LOWER(username) = LOWER($1) AND id != $2",
+            "SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?",
         )
         .bind(username)
         .bind(user_id)
@@ -884,20 +839,40 @@ async fn update_profile(
     sqlx::query(
         r#"
         UPDATE users SET
-            username = COALESCE($2, username),
-            display_name = COALESCE($3, display_name),
-            bio = COALESCE($4, bio)
-        WHERE id = $1
+            username = COALESCE(?, username),
+            display_name = COALESCE(?, display_name),
+            bio = COALESCE(?, bio)
+        WHERE id = ?
         "#,
     )
-    .bind(user_id)
     .bind(&req.username)
     .bind(&req.display_name)
     .bind(&req.bio)
+    .bind(user_id)
     .execute(&state.db)
     .await?;
 
-    Ok(Json(SuccessResponse { success: true }))
+    let updated = sqlx::query_as::<_, UserRow>(
+        "SELECT id, password_hash, email_verified, username, display_name FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
+    let email = extract_bearer_token(&headers)
+        .and_then(|t| decode_jwt(&t).ok())
+        .map(|c| c.email)
+        .unwrap_or_default();
+
+    let jwt = create_jwt(
+        updated.id,
+        &email,
+        &updated.username,
+        updated.display_name.as_deref(),
+        updated.email_verified,
+    )?;
+
+    Ok(Json(TokenResponse { success: true, token: jwt }))
 }
 
 #[derive(Deserialize)]
@@ -910,8 +885,8 @@ async fn create_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(req): Json<CreateListRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<CreateListResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
 
     if req.title.is_empty() || req.title.len() > 200 {
         return Err(AuthError::Validation(
@@ -919,16 +894,17 @@ async fn create_list(
         ));
     }
 
-    let list_id = sqlx::query_scalar::<_, i32>(
-        "INSERT INTO user_lists (user_id, title, description) VALUES ($1, $2, $3) RETURNING id",
+    let result = sqlx::query(
+        "INSERT INTO user_lists (user_id, title, description) VALUES (?, ?, ?)",
     )
     .bind(user_id)
     .bind(&req.title)
     .bind(&req.description)
-    .fetch_one(&state.db)
+    .execute(&state.db)
     .await?;
+    let list_id = result.last_insert_id() as i32;
 
-    Ok(Json(serde_json::json!({ "success": true, "id": list_id })))
+    Ok(Json(CreateListResponse { success: true, id: list_id }))
 }
 
 async fn update_list(
@@ -936,8 +912,8 @@ async fn update_list(
     headers: HeaderMap,
     Path(list_id): Path<i32>,
     Json(req): Json<CreateListRequest>,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<SuccessResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
 
     if req.title.is_empty() || req.title.len() > 200 {
         return Err(AuthError::Validation(
@@ -946,12 +922,12 @@ async fn update_list(
     }
 
     let rows = sqlx::query(
-        "UPDATE user_lists SET title = $3, description = $4, updated_at = NOW() WHERE id = $1 AND user_id = $2",
+        "UPDATE user_lists SET title = ?, description = ?, updated_at = NOW() WHERE id = ? AND user_id = ?",
     )
-    .bind(list_id)
-    .bind(user_id)
     .bind(&req.title)
     .bind(&req.description)
+    .bind(list_id)
+    .bind(user_id)
     .execute(&state.db)
     .await?;
 
@@ -959,35 +935,35 @@ async fn update_list(
         return Err(AuthError::InvalidToken);
     }
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn delete_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(list_id): Path<i32>,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<SuccessResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
 
-    sqlx::query("DELETE FROM user_lists WHERE id = $1 AND user_id = $2")
+    sqlx::query("DELETE FROM user_lists WHERE id = ? AND user_id = ?")
         .bind(list_id)
         .bind(user_id)
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn add_work_to_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path((list_id, slug)): Path<(i32, String)>,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<SuccessResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
     let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     let owns =
-        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = $1 AND user_id = $2")
+        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = ? AND user_id = ?")
             .bind(list_id)
             .bind(user_id)
             .fetch_optional(&state.db)
@@ -999,7 +975,7 @@ async fn add_work_to_list(
     }
 
     let max_pos = sqlx::query_scalar::<_, Option<i32>>(
-        "SELECT MAX(position) FROM user_list_works WHERE list_id = $1",
+        "SELECT MAX(position) FROM user_list_works WHERE list_id = ?",
     )
     .bind(list_id)
     .fetch_one(&state.db)
@@ -1008,9 +984,8 @@ async fn add_work_to_list(
 
     sqlx::query(
         r#"
-        INSERT INTO user_list_works (list_id, work_id, position)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (list_id, work_id) DO NOTHING
+        INSERT IGNORE INTO user_list_works (list_id, work_id, position)
+        VALUES (?, ?, ?)
         "#,
     )
     .bind(list_id)
@@ -1019,19 +994,19 @@ async fn add_work_to_list(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn remove_work_from_list(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path((list_id, slug)): Path<(i32, String)>,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<SuccessResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
     let work_id = base36::decode(&slug).ok_or(AuthError::InvalidToken)? as i32;
 
     let owns =
-        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = $1 AND user_id = $2")
+        sqlx::query_scalar::<_, i32>("SELECT id FROM user_lists WHERE id = ? AND user_id = ?")
             .bind(list_id)
             .bind(user_id)
             .fetch_optional(&state.db)
@@ -1042,27 +1017,27 @@ async fn remove_work_from_list(
         return Err(AuthError::Unauthorized);
     }
 
-    sqlx::query("DELETE FROM user_list_works WHERE list_id = $1 AND work_id = $2")
+    sqlx::query("DELETE FROM user_list_works WHERE list_id = ? AND work_id = ?")
         .bind(list_id)
         .bind(work_id)
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(SuccessResponse { success: true }))
 }
 
 async fn list_my_lists(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+) -> Result<Json<MyListsResponse>, AuthError> {
+    let user_id = get_user_id(&headers)?;
 
     let lists = sqlx::query_as::<_, ListRow>(
         r#"
         SELECT ul.id, ul.title, ul.description,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
         FROM user_lists ul
-        WHERE ul.user_id = $1
+        WHERE ul.user_id = ?
         ORDER BY ul.updated_at DESC
         "#,
     )
@@ -1070,42 +1045,41 @@ async fn list_my_lists(
     .fetch_all(&state.db)
     .await?;
 
-    // Also get all work_ids per list for the AddToList component
     let work_ids = sqlx::query_as::<_, ListWorkRow>(
         r#"
         SELECT ulw.list_id, ulw.work_id
         FROM user_list_works ulw
         JOIN user_lists ul ON ulw.list_id = ul.id
-        WHERE ul.user_id = $1
+        WHERE ul.user_id = ?
         "#,
     )
     .bind(user_id)
     .fetch_all(&state.db)
     .await?;
 
-    let lists: Vec<_> = lists
+    let lists = lists
         .into_iter()
         .map(|list| {
-            let works: Vec<String> = work_ids
+            let work_slugs = work_ids
                 .iter()
                 .filter(|lw| lw.list_id == list.id)
                 .map(|lw| base36::encode(lw.work_id as i64))
                 .collect();
-            serde_json::json!({
-                "id": list.id,
-                "title": list.title,
-                "description": list.description,
-                "work_count": list.work_count,
-                "work_slugs": works,
-            })
+            ListSummaryItem {
+                id: list.id,
+                title: list.title,
+                description: list.description,
+                work_count: list.work_count,
+                work_slugs,
+            }
         })
         .collect();
 
-    Ok(Json(serde_json::json!({ "lists": lists })))
+    Ok(Json(MyListsResponse { lists }))
 }
 
 async fn resolve_username_to_id(state: &AppState, username: &str) -> Result<i32, AuthError> {
-    sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+    sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER(?)")
         .bind(username)
         .fetch_optional(&state.db)
         .await?
@@ -1117,7 +1091,7 @@ async fn follow_user(
     headers: HeaderMap,
     Path(username): Path<String>,
 ) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
     if user_id == target_id {
@@ -1126,9 +1100,8 @@ async fn follow_user(
 
     sqlx::query(
         r#"
-        INSERT INTO user_follows (follower_id, following_id)
-        VALUES ($1, $2)
-        ON CONFLICT (follower_id, following_id) DO NOTHING
+        INSERT IGNORE INTO user_follows (follower_id, following_id)
+        VALUES (?, ?)
         "#,
     )
     .bind(user_id)
@@ -1144,10 +1117,10 @@ async fn unfollow_user(
     headers: HeaderMap,
     Path(username): Path<String>,
 ) -> Result<Json<SuccessResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
-    sqlx::query("DELETE FROM user_follows WHERE follower_id = $1 AND following_id = $2")
+    sqlx::query("DELETE FROM user_follows WHERE follower_id = ? AND following_id = ?")
         .bind(user_id)
         .bind(target_id)
         .execute(&state.db)
@@ -1161,11 +1134,11 @@ async fn check_following(
     headers: HeaderMap,
     Path(username): Path<String>,
 ) -> Result<Json<FollowStateResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
     let target_id = resolve_username_to_id(&state, &username).await?;
 
     let following = sqlx::query_scalar::<_, i32>(
-        "SELECT follower_id FROM user_follows WHERE follower_id = $1 AND following_id = $2",
+        "SELECT follower_id FROM user_follows WHERE follower_id = ? AND following_id = ?",
     )
     .bind(user_id)
     .bind(target_id)
@@ -1180,14 +1153,14 @@ async fn list_following(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<FollowingListResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
 
     let rows = sqlx::query_as::<_, FollowingRow>(
         r#"
         SELECT u.username, u.display_name
         FROM user_follows uf
         JOIN users u ON uf.following_id = u.id
-        WHERE uf.follower_id = $1
+        WHERE uf.follower_id = ?
         ORDER BY uf.created_at DESC
         "#,
     )
@@ -1210,7 +1183,7 @@ async fn get_feed(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<FeedResponse>, AuthError> {
-    let user_id = get_user_id(&state, &headers).await?;
+    let user_id = get_user_id(&headers)?;
 
     let rows = sqlx::query_as::<_, FeedRow>(
         r#"
@@ -1221,7 +1194,7 @@ async fn get_feed(
         JOIN users u ON ur.user_id = u.id
         JOIN editions e ON ur.edition_id = e.id
         LEFT JOIN edition_covers ec ON e.id = ec.edition_id AND ec.position = 0
-        WHERE uf.follower_id = $1
+        WHERE uf.follower_id = ?
         ORDER BY ur.updated_at DESC
         LIMIT 20
         "#,
@@ -1248,17 +1221,11 @@ async fn get_feed(
     Ok(Json(FeedResponse { feed }))
 }
 
-pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {
-    let cookie_header = headers.get("cookie")?.to_str().ok()?;
-    for part in cookie_header.split(';') {
-        let part = part.trim();
-        if let Some(value) = part.strip_prefix("session=") {
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
+pub fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+    let auth_header = headers.get("authorization")?.to_str().ok()?;
+    auth_header
+        .strip_prefix("Bearer ")
+        .map(|t| t.to_string())
 }
 
 async fn send_verification_email(
@@ -1278,22 +1245,22 @@ async fn send_verification_email(
     client
         .post("https://api.resend.com/emails")
         .header("Authorization", format!("Bearer {}", api_key))
-        .json(&serde_json::json!({
-            "from": from_email,
-            "to": [email],
-            "subject": "Verify your mylib account",
-            "html": format!(
+        .json(&ResendEmail {
+            from: from_email,
+            to: vec![email.to_string()],
+            subject: "Verify your mylib account".into(),
+            html: format!(
                 r#"<p>Welcome to mylib!</p>
                 <p>Please click the link below to verify your email address:</p>
                 <p><a href="{}">Verify Email</a></p>
                 <p>This link will expire in 24 hours.</p>"#,
                 verify_url
             ),
-            "text": format!(
+            text: format!(
                 "Welcome to mylib!\n\nPlease verify your email by visiting: {}\n\nThis link will expire in 24 hours.",
                 verify_url
-            )
-        }))
+            ),
+        })
         .send()
         .await?
         .error_for_status()?;
@@ -1346,8 +1313,8 @@ impl IntoResponse for AuthError {
             Json(AuthResponse {
                 success: false,
                 message: Some(message.into()),
-                user: None,
-            }),
+                token: None,
+                    }),
         )
             .into_response()
     }

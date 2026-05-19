@@ -96,13 +96,13 @@ const API_BASE = import.meta.env.PUBLIC_API_URL || 'http://localhost:3000';
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
-      if (data.success) {
+      if (data.success && data.token) {
+        localStorage.setItem('mylib_token', data.token);
         window.location.href = '/';
       } else {
         if (errorEl) errorEl.textContent = data.message || 'Login failed';

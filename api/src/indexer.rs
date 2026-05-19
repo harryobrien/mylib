@@ -2,9 +2,9 @@ use crate::{
     db,
     search::{generate_edge_ngrams, normalize_for_search, SearchIndex},
 };
-use sqlx::PgPool;
+use sqlx::MySqlPool;
 
-pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+pub async fn build_missing_indexes(pool: &MySqlPool, search: &SearchIndex) -> anyhow::Result<()> {
     let (db_works, db_authors, db_editions) = tokio::join!(
         db::count_works(pool),
         db::count_authors(pool),
@@ -89,7 +89,7 @@ pub async fn build_missing_indexes(pool: &PgPool, search: &SearchIndex) -> anyho
 }
 
 #[allow(unused)]
-pub async fn rebuild_all_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow::Result<()> {
+pub async fn rebuild_all_indexes(pool: &MySqlPool, search: &SearchIndex) -> anyhow::Result<()> {
     tracing::info!("Rebuilding all indexes...");
 
     let (works_result, authors_result, editions_result) = tokio::join!(
@@ -106,7 +106,7 @@ pub async fn rebuild_all_indexes(pool: &PgPool, search: &SearchIndex) -> anyhow:
     Ok(())
 }
 
-async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
+async fn index_works(pool: &MySqlPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing works from id {}...", start_id);
@@ -173,7 +173,7 @@ async fn index_works(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyh
     Ok(())
 }
 
-async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
+async fn index_authors(pool: &MySqlPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing authors from id {}...", start_id);
@@ -217,7 +217,7 @@ async fn index_authors(pool: &PgPool, search: &SearchIndex, start_id: i32) -> an
     Ok(())
 }
 
-async fn index_editions(pool: &PgPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
+async fn index_editions(pool: &MySqlPool, search: &SearchIndex, start_id: i32) -> anyhow::Result<()> {
     const BATCH_SIZE: i64 = 10000;
 
     tracing::info!("Indexing editions from id {}...", start_id);
@@ -290,7 +290,7 @@ fn extract_year(date: &Option<String>) -> Option<i64> {
 
 // --- Single document reindexing ---
 
-pub async fn reindex_work(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+pub async fn reindex_work(pool: &MySqlPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
     let Some(w) = db::get_work_for_indexing(pool, id).await? else {
         return Ok(());
     };
@@ -348,7 +348,7 @@ pub async fn reindex_work(pool: &PgPool, search: &SearchIndex, id: i32) -> anyho
     Ok(())
 }
 
-pub async fn reindex_author(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+pub async fn reindex_author(pool: &MySqlPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
     let Some(a) = db::get_author_for_indexing(pool, id).await? else {
         return Ok(());
     };
@@ -383,7 +383,7 @@ pub async fn reindex_author(pool: &PgPool, search: &SearchIndex, id: i32) -> any
     Ok(())
 }
 
-pub async fn reindex_edition(pool: &PgPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
+pub async fn reindex_edition(pool: &MySqlPool, search: &SearchIndex, id: i32) -> anyhow::Result<()> {
     let Some(e) = db::get_edition_for_indexing(pool, id).await? else {
         return Ok(());
     };

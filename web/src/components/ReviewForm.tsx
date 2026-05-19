@@ -1,7 +1,7 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { useStore } from "@nanostores/react";
-import { $user } from "../stores/user";
+import { $user, getToken } from "../stores/user";
 import { fetchUserReview } from "../lib/fetchers";
 import { StarsDisplay, StarsInput } from "./Stars";
 
@@ -40,8 +40,7 @@ export default function ReviewForm({ editionSlug }: Props) {
     try {
       await fetch(`${API_BASE}/auth/editions/${editionSlug}/review`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify({
           rating: finalRating,
           review_text: reviewText || null,
@@ -60,7 +59,7 @@ export default function ReviewForm({ editionSlug }: Props) {
     try {
       await fetch(`${API_BASE}/auth/editions/${editionSlug}/review`, {
         method: "DELETE",
-        credentials: "include",
+        ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
       });
       mutate(`userReview:${editionSlug}`);
       mutate(`editionReviews:${editionSlug}`);

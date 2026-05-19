@@ -1,18 +1,20 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.0
     container_name: mylib-db
     environment:
-      POSTGRES_DB: mylib
-      POSTGRES_USER: mylib
-      POSTGRES_PASSWORD: mylib
+      MYSQL_DATABASE: mylib
+      MYSQL_USER: mylib
+      MYSQL_PASSWORD: mylib
+      MYSQL_ROOT_PASSWORD: mylib
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+      - mysqldata:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --log-bin-trust-function-creators=1
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mylib -d mylib"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "mylib", "-pmylib"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,7 +25,7 @@ services:
       dockerfile: api/Dockerfile
     container_name: mylib-api
     environment:
-      DATABASE_URL: postgres://mylib:mylib@postgres:5432/mylib
+      DATABASE_URL: mysql://mylib:mylib@mysql:3306/mylib
       INDEX_PATH: /data/index
       LISTEN_ADDR: 0.0.0.0:3000
       RUST_LOG: info
@@ -32,7 +34,7 @@ services:
     volumes:
       - index_data:/data/index
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
@@ -67,24 +69,20 @@ services:
       - web
       - api
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: mylib-pgadmin
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: mylib-phpmyadmin
     profiles: ["dev"]
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@local.dev
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PMA_HOST: mysql
+      PMA_USER: mylib
+      PMA_PASSWORD: mylib
     ports:
       - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
 
 volumes:
-  pgdata:
-  pgadmin_data:
+  mysqldata:
   index_data:

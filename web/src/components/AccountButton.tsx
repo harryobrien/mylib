@@ -5,8 +5,6 @@ import { $userEditions } from "../stores/search";
 import { $editingMode, toggleEditingMode } from "../stores/editing";
 import { fetchUser } from "../lib/fetchers";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
-
 export default function AccountButton() {
   const { data: user, isLoading: loading } = useSWR("user", fetchUser, {
     onSuccess: (data) => $user.set(data),
@@ -14,12 +12,8 @@ export default function AccountButton() {
   });
   const editing = useStore($editingMode);
 
-  async function handleLogout(e: React.MouseEvent) {
+  function handleLogout(e: React.MouseEvent) {
     e.preventDefault();
-    await fetch(`${API_BASE}/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
     clearUser();
     $userEditions.set(null);
     mutate("user", null, false);

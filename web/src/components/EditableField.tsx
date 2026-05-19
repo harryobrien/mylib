@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useStore } from "@nanostores/react";
 import { $editingMode } from "../stores/editing";
+import { getToken } from "../stores/user";
 
 const API_BASE = import.meta.env.PUBLIC_API_URL || "http://localhost:3000";
 
@@ -40,8 +41,7 @@ export default function EditableField({
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
         body: JSON.stringify({ [field]: value || null }),
       });
 

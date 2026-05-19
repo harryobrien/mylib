@@ -7,14 +7,14 @@ mod search;
 
 use axum::http::{header, Method};
 use axum::Router;
-use sqlx::postgres::PgPoolOptions;
+use sqlx::mysql::MySqlPoolOptions;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub struct AppState {
-    pub db: sqlx::PgPool,
+    pub db: sqlx::MySqlPool,
     pub search: search::SearchIndex,
 }
 
@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
     let rebuild_index = args.iter().any(|a| a == "--rebuild-index");
 
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://mylib:mylib@localhost:5432/mylib".into());
+        .unwrap_or_else(|_| "mysql://mylib:mylib@localhost:3306/mylib".into());
 
     let index_path = std::env::var("INDEX_PATH").unwrap_or_else(|_| "./index".into());
 
@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::info!("Connecting to database...");
-    let db = PgPoolOptions::new()
+    let db = MySqlPoolOptions::new()
         .max_connections(10)
         .connect(&database_url)
         .await?;
@@ -93,8 +93,7 @@ async fn main() -> anyhow::Result<()> {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([header::CONTENT_TYPE, header::COOKIE])
-        .allow_credentials(true);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     let app = Router::new()
         .merge(routes::router())

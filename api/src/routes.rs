@@ -704,15 +704,24 @@ impl PatchEdition {
     }
 }
 
-async fn get_user_id_required(state: &AppState, headers: &HeaderMap) -> Result<i32, AppError> {
-    let token = auth::extract_session_token(headers).ok_or(AppError::Unauthorized)?;
-    sqlx::query_scalar::<_, i32>(
-        "SELECT user_id FROM sessions WHERE token = $1 AND expires_at > NOW()",
+fn get_user_id_required(headers: &HeaderMap) -> Result<i32, AppError> {
+    let token = auth::extract_bearer_token(headers).ok_or(AppError::Unauthorized)?;
+    let claims = jsonwebtoken::decode::<serde_json::Value>(
+        &token,
+        &jsonwebtoken::DecodingKey::from_secret(
+            &std::env::var("JWT_SECRET")
+                .unwrap_or_else(|_| "dev-secret-change-in-production".into())
+                .into_bytes(),
+        ),
+        &jsonwebtoken::Validation::default(),
     )
-    .bind(&token)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(AppError::Unauthorized)
+    .map_err(|_| AppError::Unauthorized)?;
+    claims
+        .claims
+        .get("sub")
+        .and_then(|v| v.as_i64())
+        .map(|id| id as i32)
+        .ok_or(AppError::Unauthorized)
 }
 
 async fn patch_work(
@@ -723,10 +732,10 @@ async fn patch_work(
 ) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
-    let user_id = get_user_id_required(&state, &headers).await?;
+    let user_id = get_user_id_required(&headers)?;
 
     let current = sqlx::query_as::<_, WorkCurrentRow>(
-        "SELECT title, subtitle, description, first_publish_date FROM works WHERE id = $1",
+        "SELECT title, subtitle, description, first_publish_date FROM works WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -749,7 +758,7 @@ async fn patch_work(
         .or(current.first_publish_date.as_ref());
 
     sqlx::query(
-        r#"UPDATE works SET title = $1, subtitle = $2, description = $3, first_publish_date = $4 WHERE id = $5"#,
+        r#"UPDATE works SET title = ?, subtitle = ?, description = ?, first_publish_date = ? WHERE id = ?"#,
     )
     .bind(new_title)
     .bind(new_subtitle)
@@ -768,7 +777,7 @@ async fn patch_work(
 
     sqlx::query(
         r#"INSERT INTO revisions (entity_type, entity_id, user_id, old_values, new_values)
-           VALUES ('work', $1, $2, $3, $4)"#,
+           VALUES ('work', ?, ?, ?, ?)"#,
     )
     .bind(id)
     .bind(user_id)
@@ -793,10 +802,10 @@ async fn patch_author(
 ) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
-    let user_id = get_user_id_required(&state, &headers).await?;
+    let user_id = get_user_id_required(&headers)?;
 
     let current = sqlx::query_as::<_, AuthorCurrentRow>(
-        "SELECT name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = $1",
+        "SELECT name, fuller_name, bio, birth_date, death_date FROM authors WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -818,7 +827,7 @@ async fn patch_author(
     let new_death_date = patch.death_date.as_ref().or(current.death_date.as_ref());
 
     sqlx::query(
-        r#"UPDATE authors SET name = $1, fuller_name = $2, bio = $3, birth_date = $4, death_date = $5 WHERE id = $6"#,
+        r#"UPDATE authors SET name = ?, fuller_name = ?, bio = ?, birth_date = ?, death_date = ? WHERE id = ?"#,
     )
     .bind(new_name)
     .bind(new_fuller_name)
@@ -839,7 +848,7 @@ async fn patch_author(
 
     sqlx::query(
         r#"INSERT INTO revisions (entity_type, entity_id, user_id, old_values, new_values)
-           VALUES ('author', $1, $2, $3, $4)"#,
+           VALUES ('author', ?, ?, ?, ?)"#,
     )
     .bind(id)
     .bind(user_id)
@@ -864,10 +873,10 @@ async fn patch_edition(
 ) -> Result<Json<PatchResponse>, AppError> {
     patch.validate()?;
     let id = base36::decode(&slug).ok_or(AppError::NotFound)? as i32;
-    let user_id = get_user_id_required(&state, &headers).await?;
+    let user_id = get_user_id_required(&headers)?;
 
     let current = sqlx::query_as::<_, EditionCurrentRow>(
-        "SELECT title, subtitle, publish_date, physical_format, number_of_pages FROM editions WHERE id = $1",
+        "SELECT title, subtitle, publish_date, physical_format, number_of_pages FROM editions WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&state.db)
@@ -895,7 +904,7 @@ async fn patch_edition(
     let new_number_of_pages = patch.number_of_pages.or(current.number_of_pages);
 
     sqlx::query(
-        r#"UPDATE editions SET title = $1, subtitle = $2, publish_date = $3, physical_format = $4, number_of_pages = $5 WHERE id = $6"#,
+        r#"UPDATE editions SET title = ?, subtitle = ?, publish_date = ?, physical_format = ?, number_of_pages = ? WHERE id = ?"#,
     )
     .bind(new_title)
     .bind(new_subtitle)
@@ -916,7 +925,7 @@ async fn patch_edition(
 
     sqlx::query(
         r#"INSERT INTO revisions (entity_type, entity_id, user_id, old_values, new_values)
-           VALUES ('edition', $1, $2, $3, $4)"#,
+           VALUES ('edition', ?, ?, ?, ?)"#,
     )
     .bind(id)
     .bind(user_id)
@@ -945,7 +954,7 @@ async fn get_edition_reviews(
                ur.created_at, ur.updated_at
         FROM user_reviews ur
         JOIN users u ON ur.user_id = u.id
-        WHERE ur.edition_id = $1
+        WHERE ur.edition_id = ?
         ORDER BY ur.updated_at DESC
         "#,
     )
@@ -984,7 +993,7 @@ async fn get_work_reviews(
         FROM user_reviews ur
         JOIN users u ON ur.user_id = u.id
         JOIN editions e ON ur.edition_id = e.id
-        WHERE e.work_id = $1
+        WHERE e.work_id = ?
         ORDER BY ur.updated_at DESC
         "#,
     )
@@ -1015,7 +1024,7 @@ async fn get_user_profile(
     Path(username): Path<String>,
 ) -> Result<Json<UserProfileResponse>, AppError> {
     let user = sqlx::query_as::<_, UserRow>(
-        "SELECT id, username, display_name, bio, created_at FROM users WHERE LOWER(username) = LOWER($1)",
+        "SELECT id, username, display_name, bio, created_at FROM users WHERE LOWER(username) = LOWER(?)",
     )
     .bind(&username)
     .fetch_optional(&state.db)
@@ -1034,7 +1043,7 @@ async fn get_user_profile(
         r#"
         SELECT status, COUNT(*) as count
         FROM user_editions
-        WHERE user_id = $1
+        WHERE user_id = ?
         GROUP BY status
         "#,
     )
@@ -1064,7 +1073,7 @@ async fn get_user_profile(
                ur.created_at, ur.updated_at
         FROM user_reviews ur
         JOIN editions e ON ur.edition_id = e.id
-        WHERE ur.user_id = $1
+        WHERE ur.user_id = ?
         ORDER BY ur.updated_at DESC
         "#,
     )
@@ -1086,13 +1095,13 @@ async fn get_user_profile(
         .collect();
 
     let followers_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE following_id = $1")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE following_id = ?")
             .bind(user_id)
             .fetch_one(&state.db)
             .await?;
 
     let following_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE follower_id = $1")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM user_follows WHERE follower_id = ?")
             .bind(user_id)
             .fetch_one(&state.db)
             .await?;
@@ -1102,7 +1111,7 @@ async fn get_user_profile(
         SELECT ul.id, ul.title,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
         FROM user_lists ul
-        WHERE ul.user_id = $1
+        WHERE ul.user_id = ?
         ORDER BY ul.updated_at DESC
         "#,
     )
@@ -1141,7 +1150,7 @@ async fn get_list(
         SELECT ul.id, ul.title, ul.description, u.username, u.display_name, ul.created_at
         FROM user_lists ul
         JOIN users u ON ul.user_id = u.id
-        WHERE ul.id = $1
+        WHERE ul.id = ?
         "#,
     )
     .bind(list_id)
@@ -1164,7 +1173,7 @@ async fn get_list(
         FROM user_list_works ulw
         JOIN works w ON ulw.work_id = w.id
         LEFT JOIN work_covers wc ON w.id = wc.work_id AND wc.position = 0
-        WHERE ulw.list_id = $1
+        WHERE ulw.list_id = ?
         ORDER BY ulw.position ASC
         "#,
     )
@@ -1205,7 +1214,7 @@ async fn get_user_lists(
     Path(username): Path<String>,
 ) -> Result<Json<ListsResponse>, AppError> {
     let user_id =
-        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER($1)")
+        sqlx::query_scalar::<_, i32>("SELECT id FROM users WHERE LOWER(username) = LOWER(?)")
             .bind(&username)
             .fetch_optional(&state.db)
             .await?
@@ -1216,7 +1225,7 @@ async fn get_user_lists(
         SELECT ul.id, ul.title, ul.description,
                (SELECT COUNT(*) FROM user_list_works WHERE list_id = ul.id) as work_count
         FROM user_lists ul
-        WHERE ul.user_id = $1
+        WHERE ul.user_id = ?
         ORDER BY ul.updated_at DESC
         "#,
     )
@@ -1250,7 +1259,7 @@ async fn get_work_lists(
         FROM user_list_works ulw
         JOIN user_lists ul ON ulw.list_id = ul.id
         JOIN users u ON ul.user_id = u.id
-        WHERE ulw.work_id = $1
+        WHERE ulw.work_id = ?
         ORDER BY follower_count DESC, ul.created_at DESC
         "#,
     )
@@ -1276,22 +1285,16 @@ async fn get_popular_works(
 ) -> Result<Json<Vec<PopularWorkItem>>, AppError> {
     let works = sqlx::query_as::<_, PopularWorkRow>(
         r#"
-        SELECT w.id, w.title, ec.cover_id,
-               (wp.ratings_sum / NULLIF(wp.ratings_count, 0))::float4 as rating_avg,
+        SELECT w.id, w.title,
+               (SELECT ec2.cover_id FROM editions e2
+                JOIN edition_covers ec2 ON e2.id = ec2.edition_id AND ec2.position = 0
+                WHERE e2.work_id = w.id LIMIT 1) as cover_id,
+               (wp.ratings_sum / NULLIF(wp.ratings_count, 0)) as rating_avg,
                wp.ratings_count
         FROM work_popularity wp
         JOIN works w ON wp.work_id = w.id
-        LEFT JOIN LATERAL (
-            SELECT ec2.cover_id FROM editions e2
-            JOIN edition_covers ec2 ON e2.id = ec2.edition_id AND ec2.position = 0
-            WHERE e2.work_id = w.id LIMIT 1
-        ) ec ON true
         WHERE wp.ratings_count > 0
-        ORDER BY (wp.ratings_sum / NULLIF(wp.ratings_count, 0)::double precision
-            * ln((1 + wp.ratings_count)::double precision)
-            + ln((1 + wp.already_read)::double precision) * 2.0
-            + ln((1 + wp.want_to_read)::double precision) * 0.5
-            + ln((1 + wp.currently_reading)::double precision)) DESC
+        ORDER BY wp.popularity_score DESC
         LIMIT 20
         "#,
     )

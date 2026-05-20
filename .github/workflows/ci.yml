@@ -74,6 +74,15 @@ jobs:
             --reporters cli,junit \
             --reporter-junit-export results.xml
 
+      - name: Check for test failures
+        if: always()
+        run: |
+          if grep -q 'failures="[1-9]' results.xml 2>/dev/null || grep -q 'errors="[1-9]' results.xml 2>/dev/null; then
+            echo "::error::Newman tests have failures"
+            grep -E 'testcase|failure' results.xml
+            exit 1
+          fi
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

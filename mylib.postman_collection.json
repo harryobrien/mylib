@@ -1,0 +1,1412 @@
+{
+  "info": {
+    "name": "mylib API",
+    "description": "Full test collection for the mylib REST API. Set the `base_url` variable to your API host (default: http://localhost:3000).\n\nRun the Auth > Register or Auth > Login request first, it automatically saves the JWT token for all subsequent authenticated requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "test_username",
+      "value": "testuser"
+    },
+    {
+      "key": "test_email",
+      "value": "test@example.com"
+    },
+    {
+      "key": "test_password",
+      "value": "password123"
+    },
+    {
+      "key": "work_slug",
+      "value": ""
+    },
+    {
+      "key": "edition_slug",
+      "value": ""
+    },
+    {
+      "key": "author_slug",
+      "value": ""
+    },
+    {
+      "key": "list_id",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('API is healthy', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.text()).to.equal('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"username\": \"{{test_username}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Registration successful', function () {",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.token).to.be.a('string');",
+                  "});",
+                  "if (data.token) {",
+                  "    pm.collectionVariables.set('token', data.token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Login successful', function () {",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.token).to.be.a('string');",
+                  "});",
+                  "if (data.token) {",
+                  "    pm.collectionVariables.set('token', data.token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Wrong Password",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"wrongpassword\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login rejected with 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - Duplicate Email",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"username\": \"duplicate_test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Duplicate email rejected with 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - Weak Password",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"weak@example.com\",\n  \"password\": \"short\",\n  \"username\": \"weaktest\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Weak password rejected with 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Unified Search",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/search?q=african",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Search returns results', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.query).to.equal('african');",
+                  "    pm.expect(data).to.have.property('works');",
+                  "    pm.expect(data).to.have.property('authors');",
+                  "    pm.expect(data).to.have.property('editions');",
+                  "});",
+                  "if (data.works && data.works.length > 0) {",
+                  "    pm.collectionVariables.set('work_slug', data.works[0].slug);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Works",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/search/works?q=african",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Work search returns results', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('results');",
+                  "    pm.expect(data).to.have.property('count');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Authors",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/search/authors?q=forester",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Author search returns results', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('results');",
+                  "});",
+                  "if (data.results && data.results.length > 0) {",
+                  "    pm.collectionVariables.set('author_slug', data.results[0].slug);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search Editions",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/search/editions?q=african",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Edition search returns results', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('results');",
+                  "});",
+                  "if (data.results && data.results.length > 0) {",
+                  "    pm.collectionVariables.set('edition_slug', data.results[0].slug);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search - Empty Query",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/search?q=",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Empty search returns 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Works",
+      "item": [
+        {
+          "name": "Get Work",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/works/{{work_slug}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Work has expected fields', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('title');",
+                  "    pm.expect(data).to.have.property('slug');",
+                  "    pm.expect(data).to.have.property('authors');",
+                  "    pm.expect(data).to.have.property('editions');",
+                  "    pm.expect(data).to.have.property('popularity');",
+                  "});",
+                  "if (data.editions && data.editions.length > 0) {",
+                  "    pm.collectionVariables.set('edition_slug', data.editions[0].slug);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Work - Not Found",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/works/zzzzzzz",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Work Reviews",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/works/{{work_slug}}/reviews",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns reviews array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('reviews');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Work Lists",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/works/{{work_slug}}/lists",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns lists array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('lists');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Patch Work (Edit Title)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/works/{{work_slug}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subtitle\": \"Updated subtitle\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Edit returns success', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data).to.have.property('slug');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authors",
+      "item": [
+        {
+          "name": "Get Author",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/authors/{{author_slug}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Author has expected fields', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('name');",
+                  "    pm.expect(data).to.have.property('key');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Author Works",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/authors/{{author_slug}}/works",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns works array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Editions",
+      "item": [
+        {
+          "name": "Get Edition",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/editions/{{edition_slug}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Edition has expected fields', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data).to.have.property('title');",
+                  "    pm.expect(data).to.have.property('isbns');",
+                  "    pm.expect(data).to.have.property('covers');",
+                  "    pm.expect(data).to.have.property('popularity');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Edition Reviews",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/editions/{{edition_slug}}/reviews",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns reviews array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.have.property('reviews');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Discovery",
+      "item": [
+        {
+          "name": "Popular Works",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/discover/popular",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns array of popular works', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recent Reviews",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/discover/reviews",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns array of recent reviews', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Recent Lists",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/discover/lists",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns array of recent lists', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reading Status (CRUD)",
+      "item": [
+        {
+          "name": "Set Edition Status (Create)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"reading\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Status set to reading', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.status).to.equal('reading');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List User Editions (Read)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/editions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Editions list contains tracked book', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.editions).to.be.an('array');",
+                  "    pm.expect(data.editions.length).to.be.greaterThan(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Progress (Update)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/progress",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_page\": 42\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Progress updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Status to Finished (Update)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"finished\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Status updated to finished', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.status).to.equal('finished');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove Edition (Delete)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Edition removed', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reviews (CRUD)",
+      "item": [
+        {
+          "name": "Re-add Edition for Review",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"finished\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Review",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/review",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4.25,\n  \"review_text\": \"A brilliant read, thoroughly enjoyed it.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Review created with quarter-star rating', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.rating).to.equal(4.25);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Review (Read)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/review"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Review exists with correct rating', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.review).to.not.be.null;",
+                  "    pm.expect(data.review.rating).to.equal(4.25);",
+                  "    pm.expect(data.review.review_text).to.equal('A brilliant read, thoroughly enjoyed it.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Review",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/review",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 3.75,\n  \"review_text\": \"Good but not as great on a second read.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Review updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.rating).to.equal(3.75);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Review",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/review"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Review deleted', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Review Deleted",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/editions/{{edition_slug}}/review"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Review is null after deletion', function () {",
+                  "    pm.expect(data.review).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Lists (CRUD)",
+      "item": [
+        {
+          "name": "Create List",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/lists",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Summer Reading 2026\",\n  \"description\": \"Books to read this summer\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('List created', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.id).to.be.a('number');",
+                  "});",
+                  "if (data.id) {",
+                  "    pm.collectionVariables.set('list_id', data.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get My Lists (Read)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/lists"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Lists include new list', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.lists).to.be.an('array');",
+                  "    pm.expect(data.lists.length).to.be.greaterThan(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update List",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/auth/lists/{{list_id}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Summer Reading 2026 (Updated)\",\n  \"description\": \"My updated summer reading list\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List updated', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Work to List",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/auth/lists/{{list_id}}/works/{{work_slug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Work added to list', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get List Detail (Read)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/lists/{{list_id}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('List contains added work', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.works).to.be.an('array');",
+                  "    pm.expect(data.works.length).to.equal(1);",
+                  "    pm.expect(data.title).to.include('Updated');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove Work from List",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/lists/{{list_id}}/works/{{work_slug}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Work removed from list', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete List",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/auth/lists/{{list_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List deleted', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.success).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Social (Follow)",
+      "item": [
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/auth/profile",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Test User\",\n  \"bio\": \"Just a test account.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Profile updated with new token', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.success).to.be.true;",
+                  "    pm.expect(data.token).to.be.a('string');",
+                  "});",
+                  "if (data.token) {",
+                  "    pm.collectionVariables.set('token', data.token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get User Profile (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/{{test_username}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var data = pm.response.json();",
+                  "pm.test('Profile has updated fields', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(data.display_name).to.equal('Test User');",
+                  "    pm.expect(data.bio).to.equal('Just a test account.');",
+                  "    pm.expect(data).to.have.property('reading_stats');",
+                  "    pm.expect(data).to.have.property('reviews');",
+                  "    pm.expect(data).to.have.property('lists');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check Following (Before)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/following/{{test_username}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not following self', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.following).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Following",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/following"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns following list', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.following).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Feed",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/feed"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns feed array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.expect(data.feed).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth Required (Error Cases)",
+      "item": [
+        {
+          "name": "Editions Without Token",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/editions",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 without auth', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Feed Without Token",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/feed",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 without auth', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create List Without Token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/lists",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Should fail\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 without auth', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -49,9 +49,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start MySQL and API
-        run: docker compose up -d mysql api
-        env:
-          PUBLIC_API_URL: http://localhost:3000
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d mysql api
 
       - name: Wait for API to be healthy
         run: |
